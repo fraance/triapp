@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  profile   AthleteProfile?
+}
+
+model AthleteProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  age             Int?
+  gender          String?
+  raceDate        DateTime?
+  raceType        String?   // e.g., "Olympic", "70.3", "IM"
+  pastPerformance String?   // Free text notes about past performances
+  timezone        String?   @default("UTC")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
