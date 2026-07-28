@@ -1,6 +1,11 @@
-"use client";
-
+import type { Metadata } from "next";
+import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
+
+export const metadata: Metadata = {
+  title: "TriApp",
+  description: "Your AI-powered triathlon training companion",
+};
 
 export default function RootLayout({
   children,

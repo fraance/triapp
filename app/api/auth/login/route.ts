@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUser, getUserByEmail, verifyPassword } from "@/lib/db";
+import { getUserByEmail, verifyPassword } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,23 +12,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const existingUser = await getUserByEmail(email);
-    if (existingUser) {
+    const user = await getUserByEmail(email);
+    if (!user) {
       return NextResponse.json(
-        { error: "User already exists" },
-        { status: 400 }
+        { error: "Invalid email or password" },
+        { status: 401 }
       );
     }
 
-    const user = await createUser(email, password);
+    const isValidPassword = await verifyPassword(password, user.password);
+    if (!isValidPassword) {
+      return NextResponse.json(
+        { error: "Invalid email or password" },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.json(
       { id: user.id, email: user.email },
-      { status: 201 }
+      { status: 200 }
     );
   } catch (error: any) {
-    console.error("Signup error:", error);
+    console.error("Login error:", error);
     return NextResponse.json(
-      { error: error.message || "Signup failed" },
+      { error: error.message || "Login failed" },
       { status: 500 }
     );
   }

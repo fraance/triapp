@@ -17,46 +17,60 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const SESSION_KEY = "triapp_session";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const stored = localStorage.getItem("triapp_user");
+    // Restore the logged-in user (the actual data lives in the database;
+    // this only remembers which account is signed in on this device).
+    const stored = localStorage.getItem(SESSION_KEY);
     if (stored) {
-      setUser(JSON.parse(stored));
+      try {
+        setUser(JSON.parse(stored));
+      } catch {
+        localStorage.removeItem(SESSION_KEY);
+      }
     }
     setIsLoading(false);
   }, []);
 
+  const persist = (u: User) => {
+    setUser(u);
+    localStorage.setItem(SESSION_KEY, JSON.stringify(u));
+  };
+
   const signup = async (email: string, password: string) => {
-    const users = JSON.parse(localStorage.getItem("triapp_users") || "{}");
-    if (users[email]) {
-      throw new Error("User already exists");
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Signup failed");
     }
-    users[email] = { password, id: Date.now().toString() };
-    localStorage.setItem("triapp_users", JSON.stringify(users));
-    
-    const newUser = { id: users[email].id, email };
-    setUser(newUser);
-    localStorage.setItem("triapp_user", JSON.stringify(newUser));
+    persist({ id: data.id, email: data.email });
   };
 
   const login = async (email: string, password: string) => {
-    const users = JSON.parse(localStorage.getItem("triapp_users") || "{}");
-    if (!users[email] || users[email].password !== password) {
-      throw new Error("Invalid email or password");
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Invalid email or password");
     }
-    
-    const userData = { id: users[email].id, email };
-    setUser(userData);
-    localStorage.setItem("triapp_user", JSON.stringify(userData));
+    persist({ id: data.id, email: data.email });
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem("triapp_user");
+    localStorage.removeItem(SESSION_KEY);
   };
 
   return (

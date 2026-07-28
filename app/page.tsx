@@ -11,7 +11,7 @@ export default function Home() {
 
   useEffect(() => {
     if (user && !isLoading) {
-      router.push("/profile");
+      router.push("/today");
     }
   }, [user, isLoading, router]);
 

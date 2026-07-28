@@ -16,7 +16,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.push("/profile");
+      router.push("/today");
     }
   }, [user, router]);
 
@@ -27,7 +27,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push("/profile");
+      router.push("/today");
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {
