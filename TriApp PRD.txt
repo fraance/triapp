@@ -1,0 +1,58 @@
+﻿Product Requirements Document: 
+Document Status: 01
+Author: CEO - France Hemain
+
+
+1. Executive Summary
+TriApp is a comprehensive training, tracking, and day to day management platform designed specifically for triathletes. 
+2. Problem Statement 
+Triathletes currently rely on a patchwork of applications to manage their sport. They might use one app to find a swimming training plan, another to track cycling power data, and a spreadsheet to manage overall weekly training load. The goal is not necessarily to add one platform on top of that. But to reduce the pain point of having to bring all that data together in one place and also to provide a very adaptive training egnerator (which currently is not provided fro the sport by those platforms). For exemple: I currently use claude code to generate training on a spreadsheet, garmin to collect data, strava to see progress. The issue being that everytime I want to make claude create that training spreadsheet I have to give him the context again, my performance again and i have to think about what to give him and also the sheet is not adaptive once it is generated their is no synch to adapt the sessions. 
+3. Target Personas
+Persona
+	Description & Needs
+	Me - The Busy Age-Grouper  (I am not a novice but I am not a veteran either. + i have a job)
+	Training for Olympic distance and 70.3. Needs structured, easy-to-follow plans.
+	
+
+	
+
+	
+
+4. Scope & Non-Goals
+In Scope for MVP (V1.0)
+* Everything that a coach would do and more
+* AI-generated dynamic training plans.
+* High level training plan until race date 
+* Regeneration/Reevaluating and updating if the plan of the week still fits with day-to-day constraints everyday 
+* Adapting the plan to the athlete profil (sexe, age, injury, menstrual cycle, past performances, background, time, fatigue level they can endure, schedule, personality, gear access, location, exetera)
+* Link wit API to garmin and or strava 
+* Update continusly based on what the athlete data 
+* Detailed traning sessions: provinding great detail and directions on how shoudl teh session be done.
+* Dashboard / webapp for overview where the athlete cane dit play with settings, his profil exetera
+* Push planned sessions to garmin / to calendar
+* The app has sucoaches for each who are the best in each discipline that talk to each other
+Out of Scope (Deferred to V2.0+)
+* Multi-sport activity recording (Swim, Bike, Run) using native mobile sensors.
+* "Brick Workout" mode seamlessly transitioning between sports without stopping the workout.
+* Integration with standard Bluetooth heart rate monitors and power meters.
+* In-app social feed and messaging (will rely on external sharing for MVP).
+* Direct integration with smart trainers (e.g., Zwift ERG mode control).
+* Nutrition coach
+* Gear Mileage Tracking
+* Race Day Organizer
+5. Key Features & User Stories
+1. Adaptive schedule based on weather: As a user, I want my tri app to have seen that tomorrow it is going to rain so it changes the session of today and tomorrows to maximise my time outside and training load
+2. Adaptive training based on aleas: I want to be able to tell my tri coach yesterday I had 2 glasses of wine and did not sleep well and it adapts the following days training so this does not put me behind on training but also i don’t get injured (the sweet spot)
+3. Adaptive training based on past performances: As a user, I want my tri app to have changed my sessions of today because yesterday I did a harder ride than originally planned.
+4. As a user, I am checking my calendar for the week and my sessions are all synched on my fav planner. 
+5. As a user I have access very quickly to what is todays session looking like
+
+
+6. Technical Integrations
+To be successful, Tri App cannot exist in a vacuum. The MVP must support the following data pipelines:
+* Wearable APIs: Garmin Connect API
+* Be connected to my calendar 
+* Has a web/app platform 
+* Import Capabilities: A place where I can drop files/ data for my coach to have the context it needs (for instance my past activities on starva)
+7. Success Metrics (KPIs)
+I am happy with it and I am using it. Then scaling to more behaviors, personas and needs.
