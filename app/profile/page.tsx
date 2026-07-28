@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
+import { GarminConnect } from "@/components/GarminConnect";
+import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
 
 interface Profile {
   age?: number;
@@ -11,6 +13,29 @@ interface Profile {
   raceType?: string;
   pastPerformance?: string;
   timezone?: string;
+  maxHeartRate?: number;
+  thresholdHeartRate?: number;
+  ftpWatts?: number;
+  swimDifficulty?: number;
+  bikeDifficulty?: number;
+  runDifficulty?: number;
+}
+
+interface Session {
+  day: string;
+  discipline: string;
+  type: string;
+  duration: string;
+  tss: number;
+  instructions: string;
+  pace: string;
+}
+
+interface Week {
+  week: number;
+  phase: string;
+  summary: string;
+  sessions: Session[];
 }
 
 export default function ProfilePage() {
@@ -19,17 +44,36 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile>({});
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [plan, setPlan] = useState<Week[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedWeek, setSelectedWeek] = useState(0);
+  const [showPlan, setShowPlan] = useState(false);
+  const [detailWeeks, setDetailWeeks] = useState("4");
 
   useEffect(() => {
     if (!user) {
       router.push("/login");
-    } else {
-      // Load profile from localStorage
-      const stored = localStorage.getItem(`triapp_profile_${user.id}`);
-      if (stored) {
-        setProfile(JSON.parse(stored));
-      }
+      return;
     }
+
+    // Load profile from the database
+    fetch(`/api/profile?userId=${user.id}`)
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data: any) => {
+        if (data && !data.error) setProfile(data);
+      })
+      .catch((err) => console.error("Error loading profile:", err));
+
+    // Load the latest saved plan from the database
+    fetch(`/api/plans/latest?userId=${user.id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: any) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPlan(data);
+          setShowPlan(true);
+        }
+      })
+      .catch((err) => console.error("Error loading plan:", err));
   }, [user, router]);
 
   async function handleSave(e: React.FormEvent) {
@@ -39,15 +83,61 @@ export default function ProfilePage() {
 
     try {
       if (user) {
-        localStorage.setItem(`triapp_profile_${user.id}`, JSON.stringify(profile));
+        const res = await fetch("/api/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: user.id, ...profile }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to save profile");
+        }
         setMessage("Profile saved successfully!");
         setTimeout(() => setMessage(""), 3000);
       }
-    } catch (error) {
-      setMessage("An error occurred");
+    } catch (error: any) {
+      setMessage(error.message || "An error occurred");
       console.error("Error saving profile:", error);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleGeneratePlan() {
+    if (!profile.raceDate) {
+      setMessage("Please set a race date in your profile first");
+      return;
+    }
+
+    setIsGenerating(true);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/generate-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user?.id, detailWeeks, ...profile }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to generate plan");
+      }
+
+      setPlan(data.weeks || []);
+      setShowPlan(true);
+      setMessage(
+        `Plan generated! ${data.totalWeeks} weeks to race day, first ${data.detailWeeks} weeks detailed.` +
+          (data.usedStravaHistory ? " Based on your Strava history." : "") +
+          (data.usedDocuments ? " Used your uploaded files." : "")
+      );
+      setTimeout(() => setMessage(""), 8000);
+    } catch (error: any) {
+      setMessage(error.message || "Failed to generate plan");
+      console.error("Error:", error);
+    } finally {
+      setIsGenerating(false);
     }
   }
 
@@ -61,25 +151,61 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
-      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
-        <div className="flex justify-between items-center mb-6">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-indigo-900">Athlete Profile</h1>
-          <button
-            onClick={() => {
-              logout();
-              router.push("/");
-            }}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-          >
-            Logout
-          </button>
+          <div className="flex gap-3">
+            <a
+              href="/today"
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+            >
+              Today
+            </a>
+            <a
+              href="/athlete"
+              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
+            >
+              Athlete
+            </a>
+            <a
+              href="/race"
+              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
+            >
+              Race
+            </a>
+            <a
+              href="/season"
+              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
+            >
+              Season
+            </a>
+            <a
+              href="/documents"
+              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
+            >
+              Files
+            </a>
+            <button
+              onClick={() => {
+                logout();
+                router.push("/");
+              }}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-600 mb-8">
           Logged in as: <strong>{user.email}</strong>
         </p>
 
-        <form onSubmit={handleSave} className="space-y-6">
+        {/* Profile Form */}
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-indigo-900 mb-6">Your Profile</h2>
+
+          <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -165,19 +291,111 @@ export default function ProfilePage() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Timezone
-            </label>
-            <input
-              type="text"
-              value={profile.timezone || ""}
-              onChange={(e) =>
-                setProfile({ ...profile, timezone: e.target.value || undefined })
-              }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="e.g., UTC, America/New_York"
-            />
+
+          {/* Thresholds — these drive how training load is calculated */}
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-bold text-indigo-900 mb-1">
+              Your physiology
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              These make your training load (TSS) numbers accurate. Leave blank
+              and we&apos;ll estimate from your Strava data.
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max HR
+                </label>
+                <input
+                  type="number"
+                  value={profile.maxHeartRate ?? ""}
+                  onChange={(e) =>
+                    setProfile({
+                      ...profile,
+                      maxHeartRate: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  placeholder="e.g., 190"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Threshold HR
+                </label>
+                <input
+                  type="number"
+                  value={profile.thresholdHeartRate ?? ""}
+                  onChange={(e) =>
+                    setProfile({
+                      ...profile,
+                      thresholdHeartRate: e.target.value
+                        ? parseInt(e.target.value)
+                        : undefined,
+                    })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  placeholder="e.g., 172"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  FTP (watts)
+                </label>
+                <input
+                  type="number"
+                  value={profile.ftpWatts ?? ""}
+                  onChange={(e) =>
+                    setProfile({
+                      ...profile,
+                      ftpWatts: e.target.value ? parseInt(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  placeholder="e.g., 240"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Per-discipline difficulty */}
+          <div className="border-t pt-6">
+            <h3 className="text-lg font-bold text-indigo-900 mb-1">
+              How hard each sport feels for you
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              1.0 = normal. Raise a sport if it costs you more than most people
+              (e.g. running 1.3), lower it if it comes easily (e.g. swimming 0.8).
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              {(
+                [
+                  ["swimDifficulty", "Swim"],
+                  ["bikeDifficulty", "Bike"],
+                  ["runDifficulty", "Run"],
+                ] as const
+              ).map(([key, label]) => (
+                <div key={key}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {label}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.5"
+                    max="2"
+                    value={profile[key] ?? 1}
+                    onChange={(e) =>
+                      setProfile({
+                        ...profile,
+                        [key]: e.target.value ? parseFloat(e.target.value) : 1,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           {message && (
@@ -200,6 +418,160 @@ export default function ProfilePage() {
             {isSaving ? "Saving..." : "Save Profile"}
           </button>
         </form>
+        </div>
+
+        {/* Generate Plan Section */}
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+            Generate Your Training Plan
+          </h2>
+          <p className="text-gray-600 mb-6">
+            {profile.raceDate
+              ? `Training for ${profile.raceType || "your"} race on ${new Date(profile.raceDate).toDateString()}`
+              : "Set your race date above to generate a plan"}
+          </p>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              How many weeks of detailed sessions to write now?
+            </label>
+            <select
+              value={detailWeeks}
+              onChange={(e) => setDetailWeeks(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg"
+            >
+              <option value="4">Next 4 weeks (fastest)</option>
+              <option value="8">Next 8 weeks</option>
+              <option value="12">Next 12 weeks</option>
+              <option value="all">All weeks to race day (slowest)</option>
+            </select>
+            <p className="text-sm text-gray-500 mt-1">
+              Every week to race day always gets a phase and targets. This only
+              controls how far ahead the day-by-day workouts are written. You can
+              add more later from the Season page.
+            </p>
+          </div>
+
+          <button
+            onClick={handleGeneratePlan}
+            disabled={isGenerating || !profile.raceDate}
+            className="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 font-semibold"
+          >
+            {isGenerating ? "Generating Plan..." : "Generate AI Training Plan"}
+          </button>
+        </div>
+
+        {/* Strava Integration Section */}
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+            Strava Integration
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Import your real training history from Strava so your AI plan is
+            based on what you actually do.
+          </p>
+          <a
+            href="/strava"
+            className="inline-block bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition"
+          >
+            Manage Strava
+          </a>
+        </div>
+
+        {/* Garmin Integration Section */}
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+            Garmin Integration
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Connect your Garmin to auto-sync workouts and track your training load.
+          </p>
+          <GarminConnect />
+        </div>
+
+        {/* Google Calendar Integration Section */}
+        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+            Google Calendar Integration
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Connect your Google Calendar to detect travel and life events. Sessions will sync automatically.
+          </p>
+          <GoogleCalendarConnect />
+        </div>
+
+        {/* Training Plan Display */}
+        {showPlan && plan.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <h2 className="text-2xl font-bold text-indigo-900 mb-6">
+              Your Training Plan
+            </h2>
+
+            {/* Week Selector */}
+            <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
+              {plan.map((week) => (
+                <button
+                  key={week.week}
+                  onClick={() => setSelectedWeek(week.week - 1)}
+                  className={`px-4 py-2 rounded-lg whitespace-nowrap font-semibold transition ${
+                    selectedWeek === week.week - 1
+                      ? "bg-indigo-600 text-white"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
+                >
+                  Week {week.week}
+                </button>
+              ))}
+            </div>
+
+            {/* Week Details */}
+            {plan[selectedWeek] && (
+              <div>
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-indigo-900">
+                    Week {plan[selectedWeek].week}: {plan[selectedWeek].phase}
+                  </h3>
+                  <p className="text-gray-600 mt-2">{plan[selectedWeek].summary}</p>
+                </div>
+
+                {/* Sessions Grid */}
+                <div className="space-y-4">
+                  {plan[selectedWeek].sessions.map((session, idx) => (
+                    <div
+                      key={idx}
+                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-bold text-lg text-gray-800">
+                            {session.day} - {session.discipline}
+                          </h4>
+                          <p className="text-sm text-indigo-600 font-semibold">
+                            {session.type}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-600">{session.duration}</p>
+                          <p className="text-sm text-gray-600">TSS: {session.tss}</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-gray-50 rounded p-3 mb-3">
+                        <p className="text-sm text-gray-700">
+                          <strong>Instructions:</strong> {session.instructions}
+                        </p>
+                      </div>
+
+                      <p className="text-sm text-gray-600">
+                        <strong>Pace/Effort:</strong> {session.pace}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
