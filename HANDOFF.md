@@ -71,8 +71,10 @@ Required keys: `DATABASE_URL`, `OPENAI_API_KEY`, `STRAVA_CLIENT_ID`,
 ## 4. What works (verified against real data)
 
 - Real accounts, database-backed. Data persists across devices.
-- **Strava**: per-user OAuth, 284 activities imported, daily incremental sync,
-  de-duplicated. Personalised TSS using the athlete's own HR thresholds.
+- **Strava**: per-user OAuth, activities imported, de-duplicated. Personalised
+  TSS using the athlete's own HR thresholds. **Sync runs automatically** every
+  6 h from an in-process scheduler armed in `instrumentation.ts`
+  (`lib/scheduler.ts`), plus on server start.
 - **Athlete profile**: auto-derived max HR, FTP, threshold pace, swim CSS,
   personal bests (5k 27:57, 10k 57:19 from official Strava splits). Every value
   labelled measured vs estimated, with its basis.
@@ -109,6 +111,25 @@ Required keys: `DATABASE_URL`, `OPENAI_API_KEY`, `STRAVA_CLIENT_ID`,
 ⚠️ Garmin and Calendar previously **faked** a connection and served fabricated
 workouts. That was removed. Do not reintroduce mock data that could be mistaken
 for real training.
+
+### Fixed 30 July 2026: the sync never ran
+
+`/api/cron/sync-strava` was built and correct, but **nothing ever called it** —
+no scheduler, no hosted cron, no external trigger. Activities only arrived when
+someone ran `npm run sync:strava` by hand, so data silently stopped on 28 July.
+`lastSyncError` was `null`: it had not failed, it had never run. The whole test
+suite passed throughout.
+
+Fix: `instrumentation.ts` → `lib/scheduler.ts`, running in-process every 6 h.
+Athletes synced within the last 3 h are skipped (so redeploys and crash loops
+cannot hammer Strava), and overlapping runs are refused. `tests/scheduler.test.mts`
+asserts the **wiring**, not just the sync logic, because logic tests alone missed
+this entirely.
+
+Tunable via `SYNC_INTERVAL_HOURS`, `SYNC_MIN_AGE_HOURS`, `DISABLE_BACKGROUND_SYNC=1`.
+
+**Lesson:** a feature that is never invoked looks identical to a healthy one.
+Test the wiring, and treat "no errors" as suspicious when data stops moving.
 
 ---
 
