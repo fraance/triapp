@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncAllConnectedUsers } from "@/lib/strava-db";
+import { runSyncNow } from "@/lib/scheduler";
 
 export const maxDuration = 300;
 
 /**
- * Daily background job: pulls new Strava activities for every connected athlete.
+ * Manual / external trigger for the Strava sync.
+ *
+ * The routine sync is armed in `instrumentation.ts` and runs inside the server
+ * on a timer — this endpoint is a manual override and a way for an external
+ * scheduler to force a run. Both call the same `runSyncNow()`.
+ *
+ * Add `?force=1` to sync even if the athlete was synced very recently.
  *
  * Protected by CRON_SECRET so it cannot be triggered by anyone who stumbles
  * across the URL. Send it either as `Authorization: Bearer <secret>` (what
@@ -25,12 +31,10 @@ function isAuthorised(req: NextRequest): boolean {
   return searchParams.get("secret") === expected;
 }
 
-async function run() {
-  const started = Date.now();
-  const summary = await syncAllConnectedUsers();
+async function run(force: boolean) {
+  const summary = await runSyncNow({ force });
   return {
     ...summary,
-    durationMs: Date.now() - started,
     ranAt: new Date().toISOString(),
   };
 }
@@ -40,7 +44,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
   try {
-    return NextResponse.json(await run());
+    const force = new URL(req.url).searchParams.get("force") === "1";
+    return NextResponse.json(await run(force));
   } catch (error: any) {
     console.error("Strava cron failed:", error);
     return NextResponse.json(

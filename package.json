@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start -H 0.0.0.0",
-    "test": "tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts",
+    "test": "tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts && tsx tests/scheduler.test.mts",
     "test:persistence": "tsx tests/persistence.test.mts",
     "test:today": "tsx tests/today.test.mts",
     "test:strava": "tsx tests/strava.test.mts",
@@ -18,7 +18,8 @@
     "test:prefill": "tsx tests/prefill.test.mts",
     "test:availability": "tsx tests/availability.test.mts",
     "postinstall": "prisma generate",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "test:scheduler": "tsx tests/scheduler.test.mts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "latest",
