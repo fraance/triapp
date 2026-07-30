@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
+import Nav from "@/components/Nav";
+import AuthGuard from "@/components/AuthGuard";
 
 export const metadata: Metadata = {
   title: "TriApp",
@@ -43,7 +45,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <Nav />
+          {/* Bottom padding clears the mobile tab bar. */}
+          <div className="pb-20 sm:pb-0">
+            <AuthGuard>{children}</AuthGuard>
+          </div>
+        </AuthProvider>
       </body>
     </html>
   );

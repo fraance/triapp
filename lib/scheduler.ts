@@ -1,5 +1,6 @@
 import { syncAllConnectedUsers } from "./strava-db";
 import { prisma } from "./prisma";
+import { adaptPlanForUser } from "./adaptation/engine";
 
 /**
  * In-process background scheduler for the Strava sync.
@@ -40,6 +41,8 @@ export interface SyncRunResult {
   succeeded?: number;
   failed?: number;
   totalAdded?: number;
+  /** How many athletes had their plan changed as a result. */
+  adapted?: number;
   durationMs?: number;
 }
 
@@ -79,16 +82,38 @@ export async function runSyncNow(
       targets ? { userIds: targets } : {}
     );
 
+    // New activity is exactly when the plan may need to change, so the
+    // adaptation engine runs off the back of a successful sync (spec: the
+    // event-driven adaptation loop). Failures here must never fail the sync.
+    let adapted = 0;
+    const adaptationOff = process.env.DISABLE_ADAPTATION === "1";
+    for (const r of summary.results) {
+      if (!r.ok || adaptationOff) continue;
+      try {
+        const outcome = await adaptPlanForUser(r.userId, { trigger: "strava_sync" });
+        if (outcome.outcome === "applied") {
+          adapted++;
+          console.log(
+            `[adaptation] ${r.email ?? r.userId}: ${outcome.changes?.length ?? 0} change(s) — ${outcome.explanation}`
+          );
+        }
+      } catch (e: any) {
+        console.error(
+          `[adaptation] ${r.email ?? r.userId} failed: ${e?.message ?? e}`
+        );
+      }
+    }
+
     const durationMs = Date.now() - started;
     console.log(
       `[strava-sync] ${summary.succeeded}/${summary.users} athletes ok, ` +
-        `${summary.totalAdded} new activities, ${durationMs}ms`
+        `${summary.totalAdded} new activities, ${adapted} plan(s) adapted, ${durationMs}ms`
     );
     for (const r of summary.results.filter((r) => !r.ok)) {
       console.error(`[strava-sync] ${r.email ?? r.userId} failed: ${r.error}`);
     }
 
-    return { ran: true, ...summary, durationMs };
+    return { ran: true, ...summary, adapted, durationMs };
   } finally {
     running = false;
   }

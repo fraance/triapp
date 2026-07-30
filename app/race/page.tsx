@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 const input =
   "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500";
@@ -20,7 +18,6 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 export default function RacePage() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
   const [r, setR] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [researching, setResearching] = useState(false);
@@ -44,13 +41,9 @@ export default function RacePage() {
   }, [user]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (authLoading || !user) return;
     load();
-  }, [user, authLoading, router, load]);
+  }, [user, authLoading, load]);
 
   const set = (k: string, v: any) => setR((prev: any) => ({ ...prev, [k]: v }));
   const numOrNull = (v: string) => (v === "" ? null : parseFloat(v));
@@ -125,17 +118,12 @@ export default function RacePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-indigo-900">Your race</h1>
-            <p className="text-gray-600">
-              The course decides the training. Tell us the race and we&apos;ll try
-              to look up its demands.
-            </p>
-          </div>
-          <Link href="/athlete" className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg">
-            Athlete
-          </Link>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-indigo-900">Your race</h1>
+          <p className="text-gray-600">
+            The course decides the training. Tell us the race and we&apos;ll try
+            to look up its demands.
+          </p>
         </div>
 
         {message && <div className="bg-blue-100 text-blue-900 px-4 py-3 rounded mb-6">{message}</div>}

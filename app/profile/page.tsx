@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
 import { GarminConnect } from "@/components/GarminConnect";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
 
@@ -39,8 +38,7 @@ interface Week {
 }
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
-  const router = useRouter();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<Profile>({});
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -51,10 +49,7 @@ export default function ProfilePage() {
   const [detailWeeks, setDetailWeeks] = useState("4");
 
   useEffect(() => {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (!user) return;
 
     // Load profile from the database
     fetch(`/api/profile?userId=${user.id}`)
@@ -74,7 +69,7 @@ export default function ProfilePage() {
         }
       })
       .catch((err) => console.error("Error loading plan:", err));
-  }, [user, router]);
+  }, [user]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -152,60 +147,16 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-indigo-900">Athlete Profile</h1>
-          <div className="flex gap-3">
-            <a
-              href="/today"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-            >
-              Today
-            </a>
-            <a
-              href="/athlete"
-              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-            >
-              Athlete
-            </a>
-            <a
-              href="/availability"
-              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-            >
-              My time
-            </a>
-            <a
-              href="/race"
-              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-            >
-              Race
-            </a>
-            <a
-              href="/season"
-              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-            >
-              Season
-            </a>
-            <a
-              href="/documents"
-              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-            >
-              Files
-            </a>
-            <button
-              onClick={() => {
-                logout();
-                router.push("/");
-              }}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-            >
-              Logout
-            </button>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-indigo-900">
+            Account &amp; plan
+          </h1>
+          <p className="text-gray-600">
+            Signed in as <strong>{user.email}</strong>
+          </p>
         </div>
 
-        <p className="text-gray-600 mb-8">
-          Logged in as: <strong>{user.email}</strong>
-        </p>
+
 
         {/* Profile Form */}
         <div className="bg-white rounded-lg shadow-lg p-8 mb-8">

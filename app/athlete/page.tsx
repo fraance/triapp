@@ -80,13 +80,9 @@ export default function AthletePage() {
   }, [user]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (authLoading || !user) return;
     load();
-  }, [user, authLoading, router, load]);
+  }, [user, authLoading, load]);
 
   const set = (k: string, v: any) => setP((prev: any) => ({ ...prev, [k]: v }));
   const numOrNull = (v: string) => (v === "" ? null : parseFloat(v));
@@ -207,25 +203,12 @@ export default function AthletePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-indigo-900">Athlete profile</h1>
-            <p className="text-gray-600">
-              Everything here makes your plan more accurate. Leave anything blank
-              — we&apos;ll estimate it from your data or test for it.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Link href="/today" className="bg-indigo-600 text-white px-4 py-2 rounded-lg">
-              Today
-            </Link>
-            <Link href="/availability" className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg">
-              My time
-            </Link>
-            <Link href="/race" className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg">
-              Race
-            </Link>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-indigo-900">Athlete profile</h1>
+          <p className="text-gray-600">
+            Everything here makes your plan more accurate. Leave anything blank
+            — we&apos;ll estimate it from your data or test for it.
+          </p>
         </div>
 
         {message && (
@@ -383,9 +366,9 @@ export default function AthletePage() {
               <input type="number" step="0.1" className={input} value={p.bodyFatPct ?? ""} onChange={(e) => set("bodyFatPct", numOrNull(e.target.value))} />
             </Field>
             <Field label="Time for training" hint="Set your day-by-day availability">
-              <a href="/availability" className="inline-block px-3 py-2 border border-indigo-300 text-indigo-700 rounded-lg">
+              <Link href="/availability" className="inline-block px-3 py-2 border border-indigo-300 text-indigo-700 rounded-lg">
                 Set my weekly availability →
-              </a>
+              </Link>
             </Field>
           </div>
         </section>

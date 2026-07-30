@@ -14,9 +14,23 @@ export default function LoginPage() {
   const { login, user } = useAuth();
   const router = useRouter();
 
+  /**
+   * proxy.ts appends `?next=` when it bounces a signed-out visitor, so we can
+   * return them to where they were actually headed instead of always dumping
+   * them on /today. Read from `window.location` rather than useSearchParams so
+   * this page doesn't need a Suspense boundary. Only same-origin paths are
+   * accepted, to avoid an open redirect.
+   */
+  function destination() {
+    if (typeof window === "undefined") return "/today";
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+    return "/today";
+  }
+
   useEffect(() => {
     if (user) {
-      router.push("/today");
+      router.replace(destination());
     }
   }, [user, router]);
 
@@ -27,7 +41,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push("/today");
+      router.replace(destination());
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {

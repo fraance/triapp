@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 interface Session {
   day: string;
@@ -23,8 +21,7 @@ interface Week {
 }
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
-  const router = useRouter();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<any>({});
   const [plan, setPlan] = useState<Week[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -32,10 +29,7 @@ export default function DashboardPage() {
   const [selectedWeek, setSelectedWeek] = useState(0);
 
   useEffect(() => {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (!user) return;
 
     // Load profile from the database
     fetch(`/api/profile?userId=${user.id}`)
@@ -52,7 +46,7 @@ export default function DashboardPage() {
         if (Array.isArray(data) && data.length > 0) setPlan(data);
       })
       .catch((err) => console.error("Error loading plan:", err));
-  }, [user, router]);
+  }, [user]);
 
   async function handleGeneratePlan() {
     if (!profile.raceDate) {
@@ -99,36 +93,11 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-indigo-900">TriApp Dashboard</h1>
-            <p className="text-gray-600 mt-1">
-              Logged in as: <strong>{user.email}</strong>
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link
-              href="/today"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-            >
-              Today
-            </Link>
-            <Link
-              href="/profile"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-            >
-              Profile Settings
-            </Link>
-            <button
-              onClick={() => {
-                logout();
-                router.push("/");
-              }}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
-            >
-              Logout
-            </button>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-indigo-900">All weeks</h1>
+          <p className="text-gray-600 mt-1">
+            Every week of your current plan, day by day.
+          </p>
         </div>
 
         {/* Generate Plan Section */}

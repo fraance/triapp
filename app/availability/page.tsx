@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 const DAYS = [
   ["monHours", "Monday"],
@@ -20,7 +18,6 @@ const input =
 
 export default function AvailabilityPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
   const [form, setForm] = useState<any>({
     monHours: 0, tueHours: 0, wedHours: 0, thuHours: 0,
     friHours: 0, satHours: 0, sunHours: 0,
@@ -61,13 +58,9 @@ export default function AvailabilityPage() {
   }, [user]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (authLoading || !user) return;
     load();
-  }, [user, authLoading, router, load]);
+  }, [user, authLoading, load]);
 
   const total = DAYS.reduce((s, [k]) => s + (Number(form[k]) || 0), 0);
 
@@ -106,18 +99,13 @@ export default function AvailabilityPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-indigo-900">
-              Your time for training
-            </h1>
-            <p className="text-gray-600">
-              How much time you <em>have</em> — not how much you currently train.
-            </p>
-          </div>
-          <Link href="/athlete" className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg">
-            Athlete
-          </Link>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-indigo-900">
+            Your time for training
+          </h1>
+          <p className="text-gray-600">
+            How much time you <em>have</em> — not how much you currently train.
+          </p>
         </div>
 
         {message && (

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface DaySession {
@@ -17,6 +16,14 @@ interface DaySession {
   day: string;
   week: number;
   date: string;
+}
+
+interface AdaptationEntry {
+  id: string;
+  trigger: string;
+  explanation: string | null;
+  changes: Array<{ discipline: string; change: string; fromDate?: string; toDate?: string; fromTss?: number; toTss?: number }>;
+  at: string;
 }
 
 interface TodayView {
@@ -36,11 +43,11 @@ interface TodayView {
 
 export default function TodayPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
   const [view, setView] = useState<TodayView | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [adaptations, setAdaptations] = useState<AdaptationEntry[]>([]);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -51,6 +58,13 @@ export default function TodayPage() {
       if (!res.ok) throw new Error(data.error || "Failed to load");
       setView(data);
       setError("");
+      // The change log is supporting information: never let it break Today.
+      try {
+        const res2 = await fetch(`/api/adaptations?userId=${user.id}&limit=5`);
+        if (res2.ok) setAdaptations((await res2.json()).adaptations ?? []);
+      } catch {
+        /* ignore */
+      }
     } catch (err: any) {
       setError(err.message || "Failed to load today's session");
     } finally {
@@ -59,13 +73,9 @@ export default function TodayPage() {
   }, [user]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (authLoading || !user) return;
     load();
-  }, [user, authLoading, router, load]);
+  }, [user, authLoading, load]);
 
   async function setStatus(sessionId: string, status: string) {
     if (!user) return;
@@ -106,25 +116,9 @@ export default function TodayPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-indigo-900">Today</h1>
-            {view && <p className="text-gray-600">{prettyDate(view.date)}</p>}
-          </div>
-          <div className="flex gap-2">
-            <Link
-              href="/dashboard"
-              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-            >
-              Full plan
-            </Link>
-            <Link
-              href="/profile"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg"
-            >
-              Profile
-            </Link>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-indigo-900">Today</h1>
+          {view && <p className="text-gray-600">{prettyDate(view.date)}</p>}
         </div>
 
         {error && (
@@ -271,6 +265,40 @@ export default function TodayPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* What the coach changed, and why. A plan that reshapes itself
+            silently cannot be trusted, so every change is readable here. */}
+        {adaptations.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold text-indigo-900 mb-3">
+              What changed
+            </h2>
+            <div className="space-y-3">
+              {adaptations.map((a) => (
+                <div key={a.id} className="bg-white rounded-lg shadow p-4">
+                  <p className="text-gray-800">{a.explanation}</p>
+                  {a.changes.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {a.changes.map((c, i) => (
+                        <li key={i} className="text-gray-500 text-sm">
+                          {c.change === "moved" &&
+                            `${c.discipline}: ${c.fromDate} \u2192 ${c.toDate}`}
+                          {c.change === "scaled" &&
+                            `${c.discipline} on ${c.toDate ?? c.fromDate}: load ${c.fromTss} \u2192 ${c.toTss}`}
+                          {c.change === "dropped" &&
+                            `${c.discipline} on ${c.fromDate}: dropped`}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-gray-400 text-xs mt-2">
+                    {new Date(a.at).toLocaleString()} \u00b7 {a.trigger.replace(/_/g, " ")}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

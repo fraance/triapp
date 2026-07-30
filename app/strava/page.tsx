@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 interface Activity {
@@ -29,7 +28,6 @@ interface Status {
 
 function StravaPageInner() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
   const params = useSearchParams();
   const [status, setStatus] = useState<Status | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -59,11 +57,7 @@ function StravaPageInner() {
   }, [user]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (authLoading || !user) return;
     const err = params.get("error");
     const connected = params.get("connected");
     const imported = params.get("imported");
@@ -71,7 +65,7 @@ function StravaPageInner() {
     if (connected)
       setMessage(`Strava connected! Imported ${imported || 0} activities.`);
     load();
-  }, [user, authLoading, router, load, params]);
+  }, [user, authLoading, load, params]);
 
   async function handleSync() {
     if (!user) return;
@@ -109,19 +103,8 @@ function StravaPageInner() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="mb-6">
           <h1 className="text-3xl font-bold text-indigo-900">Strava</h1>
-          <div className="flex gap-2">
-            <Link href="/today" className="bg-indigo-600 text-white px-4 py-2 rounded-lg">
-              Today
-            </Link>
-            <Link
-              href="/profile"
-              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-            >
-              Profile
-            </Link>
-          </div>
         </div>
 
         {message && (

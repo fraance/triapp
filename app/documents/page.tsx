@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 interface Doc {
   id: string;
@@ -17,7 +15,6 @@ interface Doc {
 
 export default function DocumentsPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const router = useRouter();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -37,13 +34,9 @@ export default function DocumentsPage() {
   }, [user]);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push("/login");
-      return;
-    }
+    if (authLoading || !user) return;
     load();
-  }, [user, authLoading, router, load]);
+  }, [user, authLoading, load]);
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -107,16 +100,10 @@ export default function DocumentsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="mb-6">
           <h1 className="text-3xl font-bold text-indigo-900">
             Context for your coach
           </h1>
-          <Link
-            href="/profile"
-            className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
-          >
-            Profile
-          </Link>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 mb-6">
