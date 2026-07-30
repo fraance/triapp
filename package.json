@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start -H 0.0.0.0",
-    "test": "tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts && tsx tests/scheduler.test.mts && tsx tests/adaptation.test.mts",
+    "start": "prisma migrate deploy && next start -H 0.0.0.0",
+    "test": "tsx tests/nav.test.mts && tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts && tsx tests/scheduler.test.mts && tsx tests/adaptation.test.mts",
     "test:persistence": "tsx tests/persistence.test.mts",
     "test:today": "tsx tests/today.test.mts",
     "test:strava": "tsx tests/strava.test.mts",
@@ -20,7 +20,8 @@
     "postinstall": "prisma generate",
     "icons": "node scripts/generate-icons.mjs",
     "test:scheduler": "tsx tests/scheduler.test.mts",
-    "test:adaptation": "tsx tests/adaptation.test.mts"
+    "test:adaptation": "tsx tests/adaptation.test.mts",
+    "test:nav": "tsx tests/nav.test.mts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "latest",
