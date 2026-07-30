@@ -219,6 +219,9 @@ export default function AthletePage() {
             <Link href="/today" className="bg-indigo-600 text-white px-4 py-2 rounded-lg">
               Today
             </Link>
+            <Link href="/availability" className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg">
+              My time
+            </Link>
             <Link href="/race" className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg">
               Race
             </Link>
@@ -379,8 +382,10 @@ export default function AthletePage() {
             <Field label="Body fat (%)" hint="Optional">
               <input type="number" step="0.1" className={input} value={p.bodyFatPct ?? ""} onChange={(e) => set("bodyFatPct", numOrNull(e.target.value))} />
             </Field>
-            <Field label="Hours available per week" hint="The plan will fit inside this">
-              <input type="number" step="0.5" className={input} value={p.weeklyHoursAvailable ?? ""} onChange={(e) => set("weeklyHoursAvailable", numOrNull(e.target.value))} />
+            <Field label="Time for training" hint="Set your day-by-day availability">
+              <a href="/availability" className="inline-block px-3 py-2 border border-indigo-300 text-indigo-700 rounded-lg">
+                Set my weekly availability →
+              </a>
             </Field>
           </div>
         </section>

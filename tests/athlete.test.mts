@@ -32,6 +32,7 @@ import {
   enforceIdentification,
 } from "../lib/race-profile";
 import { buildAthleteContext } from "../lib/athlete-context";
+import { saveAvailability } from "../lib/availability";
 import { prisma } from "../lib/prisma";
 
 let passed = 0;
@@ -325,9 +326,12 @@ async function main() {
     check("empty test list produces no text", formatTestsForPrompt([]) === "");
 
     console.log("\nComplete athlete context for the AI coach:");
+    await saveAvailability(userId, {
+      monHours: 1, tueHours: 1, wedHours: 1, thuHours: 1,
+      friHours: 0, satHours: 3, sunHours: 1,
+    });
     await updateProfile(userId, {
       heightCm: 178,
-      weeklyHoursAvailable: 8,
       favouriteSport: "Bike",
       leastFavouriteSport: "Swim",
       injuryHistory: "Left achilles tendinopathy in 2024",
@@ -350,7 +354,15 @@ async function main() {
 
     const context = await buildAthleteContext(userId);
     check("includes the athlete profile", context.includes("ATHLETE PROFILE"));
-    check("includes weekly time budget", context.includes("8 h/week"));
+    check(
+      "includes the athlete's own time budget",
+      context.includes("8 h/week") && context.includes("TIME AVAILABLE"),
+      "budget section missing"
+    );
+    check(
+      "separates time available from physical capacity",
+      context.includes("Current physical capacity")
+    );
     check("includes the injury history", context.includes("achilles"));
     check("includes health section", context.includes("HEALTH & INJURY"));
     check("respects the menstrual cycle", context.toLowerCase().includes("follicular"));

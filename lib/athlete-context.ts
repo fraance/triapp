@@ -8,6 +8,7 @@ import { deriveAthleteMetrics, formatPace } from "./athlete-metrics";
 import { analyseGaps, formatTestsForPrompt } from "./baseline-tests";
 import { formatRaceProfileForPrompt } from "./race-profile";
 import { detectPersonalBests, formatTime } from "./personal-bests";
+import { getTrainingBudget, formatBudgetForPrompt } from "./availability";
 
 function fmtDuration(seconds?: number | null): string | null {
   if (!seconds) return null;
@@ -37,12 +38,19 @@ export async function buildAthleteContext(userId: string): Promise<string> {
   if (profile?.heightCm) who.push(`- Height ${profile.heightCm} cm`);
   if (profile?.weightKg) who.push(`- Weight ${profile.weightKg} kg`);
   if (profile?.bodyFatPct) who.push(`- Body fat ${profile.bodyFatPct}%`);
-  if (profile?.weeklyHoursAvailable)
-    who.push(`- Can train about ${profile.weeklyHoursAvailable} h/week — the plan MUST fit inside this.`);
+
   if (profile?.favouriteSport) who.push(`- Favourite discipline: ${profile.favouriteSport}`);
   if (profile?.leastFavouriteSport)
     who.push(`- Least favourite discipline: ${profile.leastFavouriteSport} — keep these sessions engaging and achievable to protect consistency.`);
   if (who.length > 1) sections.push(who.join("\n"));
+
+  // --- Time available vs physical capacity ---
+  try {
+    const budget = await getTrainingBudget(userId);
+    sections.push(formatBudgetForPrompt(budget));
+  } catch (e) {
+    console.error("Could not build training budget:", e);
+  }
 
   // --- Health ---
   const health: string[] = ["HEALTH & INJURY:"];

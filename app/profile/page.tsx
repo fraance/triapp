@@ -168,6 +168,12 @@ export default function ProfilePage() {
               Athlete
             </a>
             <a
+              href="/availability"
+              className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
+            >
+              My time
+            </a>
+            <a
               href="/race"
               className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg"
             >

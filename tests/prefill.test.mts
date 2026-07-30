@@ -136,7 +136,12 @@ async function main() {
     );
     check("run threshold pace is derived", byField.has("runThresholdPaceSec"));
     check("swim CSS is derived", byField.has("swimCssSecPer100"));
-    check("weekly hours come from real volume", byField.has("weeklyHoursAvailable"));
+    // Availability is a life constraint, not something we can infer from how
+    // much someone happens to have trained. It must never be auto-filled.
+    check(
+      "available time is NEVER inferred from training volume",
+      !byField.has("weeklyHoursAvailable")
+    );
     check("5k personal best is filled in", byField.has("pb5kSec"));
     check("10k personal best is filled in", byField.has("pb10kSec"));
     check(

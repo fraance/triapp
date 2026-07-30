@@ -223,10 +223,10 @@ export async function prefillAthleteProfile(
       const v = fromData(metrics.runMaxHr);
       if (v) fill("runMaxHr", "Max HR on run", v, "Highest HR recorded running", `${v} bpm`);
     }
-    // Their realistic weekly availability starts from what they actually do.
-    if (metrics.weeklyHours.value) {
-      fill("weeklyHoursAvailable", "Weekly hours available", metrics.weeklyHours.value, metrics.weeklyHours.basis ?? "Your recent training volume", `${metrics.weeklyHours.value} h/week`);
-    }
+    // NOTE: we deliberately do NOT prefill "weekly hours available".
+    // How much time someone HAS is a life constraint only they can tell us —
+    // training less than they're able to is not evidence of having no time.
+    // Their physical capacity is derived separately in lib/availability.ts.
   } catch (e: any) {
     errors.push(`Activity metrics: ${e?.message ?? "unavailable"}`);
   }

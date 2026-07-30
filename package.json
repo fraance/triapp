@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts",
+    "test": "tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts",
     "test:persistence": "tsx tests/persistence.test.mts",
     "test:today": "tsx tests/today.test.mts",
     "test:strava": "tsx tests/strava.test.mts",
@@ -15,7 +15,8 @@
     "test:jobs": "tsx tests/jobs.test.mts",
     "test:athlete": "tsx tests/athlete.test.mts",
     "test:pbs": "tsx tests/personal-bests.test.mts",
-    "test:prefill": "tsx tests/prefill.test.mts"
+    "test:prefill": "tsx tests/prefill.test.mts",
+    "test:availability": "tsx tests/availability.test.mts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "latest",

@@ -22,6 +22,7 @@ model User {
   documents AthleteDocument[]
   raceProfile RaceProfile?
   suggestions ProfileSuggestion[]
+  availability TrainingAvailability?
 }
 
 /// Files the athlete uploads (spreadsheets, notes, past plans) that give the
@@ -109,6 +110,40 @@ model AthleteProfile {
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+/// The athlete's TIME BUDGET — how many hours they can give to training on
+/// each day of the week, plus practical constraints.
+///
+/// This is deliberately separate from physical capacity: how much time someone
+/// HAS is a life constraint they must tell us, whereas how much load their body
+/// can absorb is derived from their training history. The plan must respect
+/// whichever of the two is the tighter limit.
+model TrainingAvailability {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Hours available per day (0 = not available)
+  monHours      Float    @default(0)
+  tueHours      Float    @default(0)
+  wedHours      Float    @default(0)
+  thuHours      Float    @default(0)
+  friHours      Float    @default(0)
+  satHours      Float    @default(0)
+  sunHours      Float    @default(0)
+
+  /// Day the athlete prefers for their longest session.
+  longSessionDay String?
+  /// Days they cannot train at all, or facility limits, in their own words.
+  constraints    String?
+  /// Access to facilities, so sessions can be prescribed realistically.
+  poolAccess     Boolean @default(true)
+  gymAccess      Boolean @default(true)
+  indoorTrainer  Boolean @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 /// A difference between what the athlete entered and what we found in their
