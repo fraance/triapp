@@ -124,6 +124,10 @@ model TrainingAvailability {
   userId        String   @unique
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// When true, time is not a limiting factor. The plan is then bound purely
+  /// by what the athlete's body can absorb, and the per-day hours are ignored.
+  noTimeConstraints Boolean @default(false)
+
   // Hours available per day (0 = not available)
   monHours      Float    @default(0)
   tueHours      Float    @default(0)

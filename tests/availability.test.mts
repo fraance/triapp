@@ -210,6 +210,73 @@ async function main() {
     check("it caps weekly progression", prompt.includes("10% per week"));
     check("it gives a concrete target", prompt.includes("TARGET:"));
 
+    console.log("\n'No time constraints' is a valid answer:");
+    await saveAvailability(userId, {
+      noTimeConstraints: true,
+      monHours: 0, tueHours: 0, wedHours: 0, thuHours: 0,
+      friHours: 0, satHours: 0, sunHours: 0,
+      poolAccess: false, indoorTrainer: true,
+    });
+
+    const free = await getAvailability(userId);
+    check("the flag is stored", free.noTimeConstraints === true);
+    check(
+      "declaring no constraints counts as a complete answer",
+      free.isSet === true
+    );
+    check("no per-day hours are needed", free.totalHours === 0);
+
+    budget = await getTrainingBudget(userId);
+    check(
+      "the body becomes the only limit",
+      budget.bindingConstraint === "capacity",
+      budget.bindingConstraint
+    );
+    check(
+      "the target comes from safe progression, not from the diary",
+      budget.recommendedWeeklyHours === budget.capacity.safeNextWeekHours,
+      `${budget.recommendedWeeklyHours}`
+    );
+    check(
+      "it warns against jumping volume just because time exists",
+      budget.explanation.toLowerCase().includes("not a reason to jump")
+    );
+
+    const freePrompt = formatBudgetForPrompt(budget);
+    check(
+      "the coach is told time is not limiting",
+      freePrompt.includes("NO meaningful time constraints")
+    );
+    check(
+      "the coach is told the body governs scheduling",
+      freePrompt.toLowerCase().includes("not by their diary")
+    );
+    check(
+      "no per-day time list is emitted",
+      !freePrompt.includes("Mon 0h")
+    );
+    check(
+      "facility limits still apply without time constraints",
+      freePrompt.includes("NO pool access")
+    );
+    check(
+      "progression is still capped",
+      freePrompt.includes("10% per week")
+    );
+
+    // Turning it back off restores the day-by-day limits.
+    await saveAvailability(userId, {
+      noTimeConstraints: false,
+      monHours: 1, tueHours: 0, wedHours: 0, thuHours: 0,
+      friHours: 0, satHours: 1, sunHours: 0,
+    });
+    budget = await getTrainingBudget(userId);
+    check(
+      "unticking it restores the time limit",
+      budget.bindingConstraint === "time" && budget.recommendedWeeklyHours === 2,
+      `${budget.bindingConstraint} ${budget.recommendedWeeklyHours}`
+    );
+
     console.log("\nSanity limits:");
     await saveAvailability(userId, { monHours: -5, tueHours: 99 });
     const clamped = await getAvailability(userId);

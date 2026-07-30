@@ -25,6 +25,7 @@ export default function AvailabilityPage() {
     monHours: 0, tueHours: 0, wedHours: 0, thuHours: 0,
     friHours: 0, satHours: 0, sunHours: 0,
     poolAccess: true, gymAccess: true, indoorTrainer: false,
+    noTimeConstraints: false,
   });
   const [budget, setBudget] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +48,7 @@ export default function AvailabilityPage() {
         });
         next.longSessionDay = a.longSessionDay ?? "";
         next.constraints = a.constraints ?? "";
+        next.noTimeConstraints = a.noTimeConstraints;
         next.poolAccess = a.poolAccess;
         next.gymAccess = a.gymAccess;
         next.indoorTrainer = a.indoorTrainer;
@@ -125,6 +127,33 @@ export default function AvailabilityPage() {
         )}
 
         <section className="bg-white rounded-lg shadow p-6 mb-6">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={Boolean(form.noTimeConstraints)}
+              onChange={(e) =>
+                setForm({ ...form, noTimeConstraints: e.target.checked })
+              }
+            />
+            <span>
+              <span className="font-semibold text-gray-800">
+                I have no real time constraints
+              </span>
+              <span className="block text-sm text-gray-600">
+                Train whenever needed. Your plan will then be limited only by
+                what your body can absorb — it still won&apos;t jump your volume
+                just because the time is there.
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <section
+          className={`bg-white rounded-lg shadow p-6 mb-6 ${
+            form.noTimeConstraints ? "opacity-50 pointer-events-none" : ""
+          }`}
+        >
           <h2 className="text-xl font-bold text-indigo-900 mb-1">
             Hours available each day
           </h2>

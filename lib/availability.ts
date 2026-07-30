@@ -28,6 +28,8 @@ export const DAY_FIELDS = [
 
 export interface AvailabilitySummary {
   isSet: boolean;
+  /** The athlete says time is not a limiting factor for them. */
+  noTimeConstraints: boolean;
   totalHours: number;
   byDay: Array<{ day: string; hours: number }>;
   trainingDays: number;
@@ -73,6 +75,7 @@ export async function getAvailability(
   if (!a) {
     return {
       isSet: false,
+      noTimeConstraints: false,
       totalHours: 0,
       byDay: DAY_FIELDS.map(([, day]) => ({ day, hours: 0 })),
       trainingDays: 0,
@@ -92,7 +95,9 @@ export async function getAvailability(
   const total = byDay.reduce((s, d) => s + d.hours, 0);
 
   return {
-    isSet: total > 0,
+    // Declaring "no constraints" is itself a valid, complete answer.
+    isSet: a.noTimeConstraints || total > 0,
+    noTimeConstraints: a.noTimeConstraints,
     totalHours: Math.round(total * 10) / 10,
     byDay,
     trainingDays: byDay.filter((d) => d.hours > 0).length,
@@ -119,7 +124,7 @@ export async function saveAvailability(
   for (const key of ["longSessionDay", "constraints"]) {
     if (key in data) clean[key] = data[key] || null;
   }
-  for (const key of ["poolAccess", "gymAccess", "indoorTrainer"]) {
+  for (const key of ["poolAccess", "gymAccess", "indoorTrainer", "noTimeConstraints"]) {
     if (key in data) clean[key] = Boolean(data[key]);
   }
 
@@ -214,6 +219,28 @@ export async function getTrainingBudget(
     };
   }
 
+  // The athlete has told us time is not a constraint. Their body is then the
+  // only limit, so we build entirely around safe physiological progression.
+  if (availability.noTimeConstraints) {
+    if (!capacity.hasData) {
+      return {
+        availability,
+        capacity,
+        bindingConstraint: "capacity",
+        recommendedWeeklyHours: null,
+        explanation:
+          "The athlete has no meaningful time constraints, but there is no training history to judge their capacity. Start conservatively, keep the first week comfortable, and increase by no more than 10% per week.",
+      };
+    }
+    return {
+      availability,
+      capacity,
+      bindingConstraint: "capacity",
+      recommendedWeeklyHours: capacity.safeNextWeekHours,
+      explanation: `The athlete has no meaningful time constraints, so their body is the only limit. They have been training ${capacity.recentWeeklyHours} h/week with a biggest week of ${capacity.peakWeeklyHours} h. Build around ${capacity.safeNextWeekHours} h/week and progress by at most 10% per week — having the time available is not a reason to jump the volume.`,
+    };
+  }
+
   if (!availability.isSet) {
     return {
       availability,
@@ -257,7 +284,20 @@ export async function getTrainingBudget(
 export function formatBudgetForPrompt(budget: TrainingBudget): string {
   const lines: string[] = ["TIME AVAILABLE AND PHYSICAL CAPACITY:"];
 
-  if (budget.availability.isSet) {
+  if (budget.availability.noTimeConstraints) {
+    lines.push(
+      "- The athlete has NO meaningful time constraints — they can train whenever needed."
+    );
+    lines.push(
+      "- Session length and scheduling are therefore governed only by what their body can absorb, not by their diary."
+    );
+    if (budget.availability.longSessionDay) {
+      lines.push(`- They still prefer their long session on ${budget.availability.longSessionDay}.`);
+    }
+    if (budget.availability.constraints) {
+      lines.push(`- Notes: ${budget.availability.constraints}`);
+    }
+  } else if (budget.availability.isSet) {
     const days = budget.availability.byDay
       .map((d) => `${d.day.slice(0, 3)} ${d.hours}h`)
       .join(", ");
@@ -271,14 +311,15 @@ export function formatBudgetForPrompt(budget: TrainingBudget): string {
     if (budget.availability.constraints) {
       lines.push(`- Constraints: ${budget.availability.constraints}`);
     }
-    const facilities: string[] = [];
-    if (!budget.availability.poolAccess) facilities.push("NO pool access — swim sessions must be open water or dryland");
-    if (!budget.availability.gymAccess) facilities.push("no gym — strength work must be bodyweight");
-    if (budget.availability.indoorTrainer) facilities.push("has an indoor trainer, so bad weather is not a blocker for cycling");
-    if (facilities.length) lines.push(`- Facilities: ${facilities.join("; ")}.`);
   } else {
     lines.push("- The athlete has NOT told us how much time they have. Do not assume.");
   }
+
+  const facilities: string[] = [];
+  if (!budget.availability.poolAccess) facilities.push("NO pool access — swim sessions must be open water or dryland");
+  if (!budget.availability.gymAccess) facilities.push("no gym — strength work must be bodyweight");
+  if (budget.availability.indoorTrainer) facilities.push("has an indoor trainer, so bad weather is not a blocker for cycling");
+  if (facilities.length) lines.push(`- Facilities: ${facilities.join("; ")}.`);
 
   if (budget.capacity.hasData) {
     lines.push(
