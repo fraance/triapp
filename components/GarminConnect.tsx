@@ -1,54 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-
+/**
+ * Garmin is NOT connected and cannot be yet.
+ *
+ * Our Garmin Connect Developer Program application is still under review, so
+ * there is no way to link an account. We show the real status rather than a
+ * button that pretends to work.
+ */
 export function GarminConnect() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
-
-  useEffect(() => {
-    // Check if Garmin is connected by looking for the token
-    const token = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("garmin_token"));
-    setIsConnected(!!token);
-    setIsChecking(false);
-  }, []);
-
-  const handleConnect = () => {
-    // For MVP with mock data, just set the cookie and redirect
-    // In production, this would redirect to Garmin OAuth
-    document.cookie =
-      "garmin_token=mock_garmin_token_12345; max-age=31536000; path=/";
-    setIsConnected(true);
-    window.location.href = "/workouts";
-  };
-
-  if (isChecking) {
-    return <div className="text-gray-600">Checking Garmin connection...</div>;
-  }
-
   return (
-    <div className="flex gap-4 items-center">
-      {isConnected ? (
-        <>
-          <span className="text-green-600 font-semibold">✓ Garmin Connected</span>
-          <Link
-            href="/workouts"
-            className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
-          >
-            View Workouts
-          </Link>
-        </>
-      ) : (
-        <button
-          onClick={handleConnect}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
-        >
-          Connect Garmin
-        </button>
-      )}
+    <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+      <p className="font-semibold text-gray-800">Not connected</p>
+      <p className="text-gray-600 text-sm mt-1">
+        Garmin access is pending approval of our developer application. Until
+        Garmin grants access there is no way to link your account, so no Garmin
+        data is being used anywhere in your plan.
+      </p>
+      <p className="text-gray-500 text-sm mt-2">
+        In the meantime your training data comes from Strava.
+      </p>
     </div>
   );
 }

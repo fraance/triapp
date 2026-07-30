@@ -484,7 +484,8 @@ export default function ProfilePage() {
             Garmin Integration
           </h2>
           <p className="text-gray-600 mb-6">
-            Connect your Garmin to auto-sync workouts and track your training load.
+            Once approved, Garmin will auto-sync completed workouts and daily
+            health metrics.
           </p>
           <GarminConnect />
         </div>
@@ -495,7 +496,8 @@ export default function ProfilePage() {
             Google Calendar Integration
           </h2>
           <p className="text-gray-600 mb-6">
-            Connect your Google Calendar to detect travel and life events. Sessions will sync automatically.
+            Planned: read travel and life events, and write sessions to your
+            calendar.
           </p>
           <GoogleCalendarConnect />
         </div>
