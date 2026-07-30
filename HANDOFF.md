@@ -99,7 +99,7 @@ Required keys: `DATABASE_URL`, `OPENAI_API_KEY`, `STRAVA_CLIENT_ID`,
 | **Adaptation engine** | **Not built.** The core PRD promise. Next milestone. |
 | **Garmin** | Blocked — API application under review. Endpoints return 503. |
 | **Google Calendar** | Not built. Endpoints return 503. |
-| **Deployment** | Live but **broken** — see §6. |
+| **Deployment** | Working — see §6. Strava OAuth on the live site still blocked. |
 | Advanced run dynamics (cadence, GCT, SWOLF) | Strava's summary feed doesn't expose these. Needs Garmin or FIT parsing. |
 
 ⚠️ Garmin and Calendar previously **faked** a connection and served fabricated
@@ -108,46 +108,69 @@ for real training.
 
 ---
 
-## 6. Deployment — CURRENTLY BROKEN (first thing to fix)
+## 6. Deployment — WORKING
 
 - **Live URL:** https://triapp-production.up.railway.app
-- **GitHub:** https://github.com/fraance/triapp (main is up to date, 0 unpushed)
-- **Builds fine.** Fails at runtime.
+- **GitHub:** https://github.com/fraance/triapp
+- **Railway project:** `optimistic-achievement` (services: `triapp`, `Postgres`)
 
-**Cause:** all environment variables are missing in Railway.
+Fixed on 30 July 2026: all 6 environment variables were missing in Railway and
+have been set via the Railway CLI. `/api/health` now returns `"healthy": true`,
+database connected, and every page returns 200.
 
-```
-/api/health  →  healthy: false, database: FAILED
-missing: DATABASE_URL, OPENAI_API_KEY, STRAVA_CLIENT_ID,
-         STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URI
-```
-
-**Fix:** CEO must add 6 variables in Railway → `triapp` service → Variables →
-Raw Editor. Command to copy them to clipboard:
+Managing env vars from the terminal (avoids the Railway web UI):
 
 ```bash
-cd /Users/france.hemain/Downloads/triapp && { grep -E "^(DATABASE_URL|OPENAI_API_KEY|STRAVA_CLIENT_ID|STRAVA_CLIENT_SECRET|CRON_SECRET)=" .env.local | sed 's/"//g'; echo "STRAVA_REDIRECT_URI=https://triapp-production.up.railway.app/api/strava/callback"; } | pbcopy
+railway login                                     # one-time, opens browser
+railway link --project optimistic-achievement --service triapp --environment production
+railway variables --service triapp                # list
+railway variables --service triapp --set "KEY=value"
+railway redeploy --service triapp --environment production --yes
+curl -s https://triapp-production.up.railway.app/api/health
 ```
 
-Verify with `/api/health` → want `"healthy": true`.
+`DATABASE_URL` uses Railway's **public proxy** host, not the internal one. It
+works; it is marginally slower. Switching to `${{Postgres.DATABASE_URL}}` would
+be an improvement, not a fix.
 
-Also: Strava's callback domain is still `localhost`. Changing it to the Railway
-domain **breaks local dev** (Strava allows one domain). Consider a second Strava
-app for local testing.
+⚠️ **Strava OAuth does not work on the live site.** Strava allows one callback
+domain per app and ours is still `localhost` (needed for local dev). Fix by
+creating a **second Strava app** for production. Until then, Strava connect only
+works on localhost.
 
 ---
 
-## 7. ⚠️ Security — outstanding
+## 7. Security — credentials rotated
 
-The CEO pasted live credentials into a chat: **OpenAI API key**, **database
-password**, and **Strava client secret**. They have **not been rotated yet**.
+The CEO once pasted live credentials into a chat: **OpenAI API key**, **database
+password**, and **Strava client secret**. **All three were rotated on 30 July
+2026** and each old credential was verified dead.
 
-Recommend rotating, in priority order:
-1. OpenAI key (financial exposure) — platform.openai.com/api-keys
-2. Postgres password — Railway → Postgres service → regenerate
-3. Strava client secret — strava.com/settings/api
+Verified: **no secret has ever been committed to git.** `.env*` has always been
+gitignored and the full history is clean. Exposure was limited to the chat.
 
-After rotating, update `.env.local` **and** Railway.
+| Credential | Status |
+|---|---|
+| OpenAI API key | ✅ Rotated. New key `TriappV1_K3` (`…-U4A`). Old (`…0ksA`) revoked — confirmed HTTP 401 `invalid_api_key`. |
+| Postgres password | ✅ Rotated (40-char alphanumeric). Old password confirmed rejected: `password authentication failed`. Data intact. |
+| Strava client secret | ✅ Rotated (`…25c13`). Verified by a real token refresh + `/athlete` call, both HTTP 200. No re-authorisation was needed. |
+
+### Rotating a credential — the procedure that works
+
+Secrets must never appear in chat. Instead: the CEO copies the new secret to the
+clipboard, the agent reads it with `pbpaste`, validates format, **tests it live
+before changing anything**, writes it to `.env.local` and Railway, confirms the
+old credential is dead, then clears the clipboard.
+
+⚠️ **Postgres trap:** setting Railway's `POSTGRES_PASSWORD` variable does **not**
+change the running database's password — that variable is only read on first
+initialisation. You must `ALTER USER postgres WITH PASSWORD '…'` over a live
+connection, *then* update all of `POSTGRES_PASSWORD`, `PGPASSWORD`,
+`DATABASE_URL`, `DATABASE_PUBLIC_URL` on the Postgres service **and**
+`DATABASE_URL` on the `triapp` service. Expect ~90 s of downtime. Use
+alphanumeric-only passwords so they need no URL-encoding.
+
+No `psql` on this machine — use the `pg` client already in `node_modules`.
 
 Also note: auth is MVP-grade (simple session in localStorage, no CSRF, no rate
 limiting). Fine for private testing; **not safe for real users**.
@@ -179,12 +202,16 @@ Never guess these — the rules forbid inventing data. Ask, or leave blank.
 
 ## 10. Suggested next steps
 
-1. **Get the deployment working** (§6) — 10 minutes, unblocks everything.
-2. **Rotate credentials** (§7).
-3. **Build the adaptation engine** — the core differentiator:
+1. ~~Get the deployment working~~ — **done** 30 July 2026 (§6).
+2. ~~Rotate credentials~~ — **done** 30 July 2026, all three (§7).
+3. **Build the adaptation engine** — the core differentiator. The CEO is
+   defining the intended behaviour himself; wait for his spec before building.
+   Groundwork that is already known to be needed:
    - Daily check-in ("slept badly, 2 glasses of wine, legs sore")
    - Detect overshoot/undershoot vs plan from synced Strava data
    - Regenerate the coming days within availability + capacity limits
    - Log every change with a reason the athlete can read
    - Rate-limit regenerations (PRD: max 3 manual/day)
-4. Then: Google Calendar sync, Garmin when approved.
+   No adaptation models exist in `prisma/schema.prisma` yet — this is greenfield.
+4. Second Strava app so OAuth works in production (§6).
+5. Then: Google Calendar sync, Garmin when approved.

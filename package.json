@@ -17,7 +17,8 @@
     "test:pbs": "tsx tests/personal-bests.test.mts",
     "test:prefill": "tsx tests/prefill.test.mts",
     "test:availability": "tsx tests/availability.test.mts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "latest",
