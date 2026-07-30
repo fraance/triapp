@@ -16,10 +16,11 @@ Source docs in the repo root:
 - `TriApp Technical Design Document V4.txt` — architecture intent
 - `AGENTS.md` — **project rules. Read these first, they are binding.**
 
-### The core promise (not yet built)
-A plan that **adapts**: weather, fatigue, a heavy session, travel — the plan
-reshuffles itself. Today the app *generates* excellent plans but they are
-static. This is the single most important remaining gap.
+### The core promise
+
+A plan that **adapts**. **Phase 1 is built** (30 July 2026) — see §11. Weather,
+calendar and HRV-based readiness are not, and are blocked on data we do not
+have.
 
 ---
 
@@ -240,3 +241,65 @@ Never guess these — the rules forbid inventing data. Ask, or leave blank.
    No adaptation models exist in `prisma/schema.prisma` yet — this is greenfield.
 4. Second Strava app so OAuth works in production (§6).
 5. Then: Google Calendar sync, Garmin when approved.
+
+---
+
+## 11. Adaptation engine — phase 1 (built 30 July 2026)
+
+Spec: `TriApp -  Adaptation Engine Logic.md`. Code: `lib/adaptation/`.
+Tests: `tests/adaptation.test.mts` (58 assertions).
+
+**The architectural rule, which must not be broken:** signal engines are pure
+functions that read state and return *constraints*. Only the solver writes the
+plan. That is what makes every change reproducible and explainable.
+
+| File | Role |
+|---|---|
+| `types.ts` | Load vectors, constraints, solver types |
+| `load-vector.ts` | 4-component load, EWMA, ACWR, daily series |
+| `guardrails.ts` | Inviolable limits — checked, never weighted |
+| `signals.ts` | Execution drift, missed-session salvage, fatigue pressure |
+| `solver.ts` | Deterministic beam search + scoring |
+| `engine.ts` | Orchestration, hysteresis, versioning, audit log |
+| `narrator.ts` | LLM phrasing only — forbidden from computing anything |
+
+Runs automatically after each Strava sync (`lib/scheduler.ts`).
+`DISABLE_ADAPTATION=1` turns auto-apply off.
+Athlete-facing log: `/api/adaptations`, shown on Today under "What changed".
+
+### Decisions worth knowing
+
+- **Beam search, not CP-SAT.** CP-SAT needs a separate Python service; the
+  search space (7–10 days, few legal moves) does not justify it. The interface
+  is narrow enough to swap later.
+- **Infeasible states stay in the search.** Repairing a plan often needs two
+  changes, and every route passes through a one-change state that is still
+  illegal. Pruning those made repairs unreachable and the plan silently failed
+  to adapt. They are penalised, not discarded; only feasible plans can win.
+- **ACWR compares per-day to per-day.** Chronic load is a daily EWMA, so the
+  acute side must be a daily average too. Comparing a multi-day sum against it
+  inflated the ratio and blocked reasonable weeks.
+- **Illegal plans are repaired even at a lower score.** Hysteresis only applies
+  when the current plan is already legal.
+- **Undershoot is only ever a soft constraint**, so it can never push load up
+  past a guardrail.
+
+### Not built, and why
+
+| Piece | Blocker |
+|---|---|
+| Readiness engine (HRV/sleep/RHR z-scores) | **No data.** Strava exposes none; Garmin not connected. Would require inventing numbers. |
+| Predictive readiness | Downstream of readiness |
+| Weather engine | Needs athlete location + a weather API key |
+| Logistics / calendar | Google Calendar not built |
+| Learning layer (contextual bandits) | Needs months of accept/reject history. `Adaptation.athleteVerdict` exists to collect it. |
+
+### Open questions for phase 2
+
+- Change minimality is not yet proven. A dry run on the CEO's real plan produced
+  three moves where fewer might suffice; the solver takes the best legal plan it
+  finds, and low-value extra moves are penalised but not forbidden.
+- No rate limit on adaptations yet (PRD: max 3 manual regenerations/day).
+- Anchor sessions are never set — `isAnchor` defaults false, so nothing is
+  currently protected as a key session. The macro planner (spec Part 3) needs
+  to assign them.
