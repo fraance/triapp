@@ -8,21 +8,22 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  password  String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  profile   AthleteProfile?
-  trainingPlans TrainingPlan[]
-  garminToken GarminToken?
+  id                  String                @id @default(cuid())
+  email               String                @unique
+  password            String
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  profile             AthleteProfile?
+  trainingPlans       TrainingPlan[]
+  garminToken         GarminToken?
   googleCalendarToken GoogleCalendarToken?
-  stravaToken StravaToken?
-  stravaActivities StravaActivity[]
-  documents AthleteDocument[]
-  raceProfile RaceProfile?
-  suggestions ProfileSuggestion[]
-  availability TrainingAvailability?
+  stravaToken         StravaToken?
+  stravaActivities    StravaActivity[]
+  documents           AthleteDocument[]
+  raceProfile         RaceProfile?
+  suggestions         ProfileSuggestion[]
+  adaptations         Adaptation[]
+  availability        TrainingAvailability?
 }
 
 /// Files the athlete uploads (spreadsheets, notes, past plans) that give the
@@ -32,8 +33,8 @@ model AthleteDocument {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   filename    String
-  fileType    String   // csv | xlsx | txt
-  content     String   // Extracted plain-text content
+  fileType    String // csv | xlsx | txt
+  content     String // Extracted plain-text content
   rowCount    Int?
   includeInAi Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -42,9 +43,9 @@ model AthleteDocument {
 }
 
 model AthleteProfile {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // --- Basics ---
   age             Int?
@@ -55,61 +56,61 @@ model AthleteProfile {
   timezone        String?   @default("UTC")
 
   // --- Physical ---
-  heightCm        Float?
-  weightKg        Float?
-  bodyFatPct      Float?
+  heightCm   Float?
+  weightKg   Float?
+  bodyFatPct Float?
 
   // --- Baseline physiology ---
-  restingHeartRate    Int?
-  hrv                 Int?     // ms (rMSSD)
-  maxHeartRate        Int?
-  thresholdHeartRate  Int?
-  ftpWatts            Int?
+  restingHeartRate   Int?
+  hrv                Int? // ms (rMSSD)
+  maxHeartRate       Int?
+  thresholdHeartRate Int?
+  ftpWatts           Int?
 
   // --- Preferences ---
-  favouriteSport      String?  // Swim | Bike | Run
-  leastFavouriteSport String?
-  swimDifficulty  Float?  @default(1.0)
-  bikeDifficulty  Float?  @default(1.0)
-  runDifficulty   Float?  @default(1.0)
+  favouriteSport       String? // Swim | Bike | Run
+  leastFavouriteSport  String?
+  swimDifficulty       Float?  @default(1.0)
+  bikeDifficulty       Float?  @default(1.0)
+  runDifficulty        Float?  @default(1.0)
   weeklyHoursAvailable Float?
 
   // --- Health / medical ---
-  injuryHistory        String?
-  ongoingIssues        String?
-  chronicConditions    String?
-  mobilityLimitations  String?
+  injuryHistory       String?
+  ongoingIssues       String?
+  chronicConditions   String?
+  mobilityLimitations String?
 
   // --- Menstrual cycle (optional) ---
-  tracksMenstrualCycle Boolean? @default(false)
+  tracksMenstrualCycle Boolean?  @default(false)
   cycleLengthDays      Int?
   lastPeriodStart      DateTime?
 
   // --- Swim specifics ---
-  swimCssSecPer100     Int?   // Critical Swim Speed, seconds per 100m
-  swimStrokeCount      Int?   // strokes per length
-  swimStrokeRate       Int?   // strokes per minute
+  swimCssSecPer100     Int? // Critical Swim Speed, seconds per 100m
+  swimStrokeCount      Int? // strokes per length
+  swimStrokeRate       Int? // strokes per minute
   swimComfortOpenWater String? // e.g. "confident" | "nervous"
 
   // --- Bike specifics ---
-  bikeLthr             Int?   // Lactate threshold HR on the bike
-  bikeMaxHr            Int?
-  bikeAvgCadence       Int?
+  bikeLthr       Int? // Lactate threshold HR on the bike
+  bikeMaxHr      Int?
+  bikeAvgCadence Int?
 
   // --- Run specifics ---
-  runThresholdPaceSec  Int?   // seconds per km at threshold
-  runLthr              Int?
-  runMaxHr             Int?
-  runCadence           Int?   // steps per minute
-  runGroundContactMs   Int?
-  runVerticalOscMm     Float?
-  pb5kSec              Int?
-  pb10kSec             Int?
-  pbHalfSec            Int?
-  pbMarathonSec        Int?
+  runThresholdPaceSec Int? // seconds per km at threshold
+  runLthr             Int?
+  runMaxHr            Int?
+  runCadence          Int? // steps per minute
+  runGroundContactMs  Int?
+  runVerticalOscMm    Float?
+  pb5kSec             Int?
+  pb10kSec            Int?
+  pbHalfSec           Int?
+  pbMarathonSec       Int?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// The athlete's TIME BUDGET — how many hours they can give to training on
@@ -120,22 +121,22 @@ model AthleteProfile {
 /// can absorb is derived from their training history. The plan must respect
 /// whichever of the two is the tighter limit.
 model TrainingAvailability {
-  id            String   @id @default(cuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   /// When true, time is not a limiting factor. The plan is then bound purely
   /// by what the athlete's body can absorb, and the per-day hours are ignored.
   noTimeConstraints Boolean @default(false)
 
   // Hours available per day (0 = not available)
-  monHours      Float    @default(0)
-  tueHours      Float    @default(0)
-  wedHours      Float    @default(0)
-  thuHours      Float    @default(0)
-  friHours      Float    @default(0)
-  satHours      Float    @default(0)
-  sunHours      Float    @default(0)
+  monHours Float @default(0)
+  tueHours Float @default(0)
+  wedHours Float @default(0)
+  thuHours Float @default(0)
+  friHours Float @default(0)
+  satHours Float @default(0)
+  sunHours Float @default(0)
 
   /// Day the athlete prefers for their longest session.
   longSessionDay String?
@@ -146,8 +147,8 @@ model TrainingAvailability {
   gymAccess      Boolean @default(true)
   indoorTrainer  Boolean @default(false)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// A difference between what the athlete entered and what we found in their
@@ -175,17 +176,17 @@ model ProfileSuggestion {
 /// Specific demands of the goal race — topography, water, climate.
 /// Values may be suggested by the AI but must be confirmed by the athlete.
 model RaceProfile {
-  id            String   @id @default(cuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  raceName      String?
-  location      String?
-  raceDate      DateTime?
-  distanceType  String?  // Sprint | Olympic | 70.3 | Full IM
+  raceName     String?
+  location     String?
+  raceDate     DateTime?
+  distanceType String? // Sprint | Olympic | 70.3 | Full IM
 
   // Swim
-  swimEnvironment String?  // ocean | lake | river | pool
+  swimEnvironment String? // ocean | lake | river | pool
   waterTempC      Float?
   wetsuitLikely   Boolean?
   swimNotes       String?
@@ -203,33 +204,35 @@ model RaceProfile {
   runNotes          String?
 
   // Climate
-  expectedTempC     Float?
-  expectedHumidity  Int?
-  windNotes         String?
+  expectedTempC    Float?
+  expectedHumidity Int?
+  windNotes        String?
 
   /// Where the values came from and whether the athlete has confirmed them.
-  source        String   @default("manual") // manual | ai_suggested | web_research
-  confirmed     Boolean  @default(false)
-  aiConfidence  String?  // high | medium | low
-  sources       String?  // URLs the facts came from
-  researchedAt  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  source       String    @default("manual") // manual | ai_suggested | web_research
+  confirmed    Boolean   @default(false)
+  aiConfidence String? // high | medium | low
+  sources      String? // URLs the facts came from
+  researchedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model TrainingPlan {
-  id            String    @id @default(cuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetRaceDate DateTime
-  startDate     DateTime? // Monday of week 1 — anchors sessions to real calendar dates
-  currentPhase  String?   // e.g., "Base", "Build", "Taper"
-  weekCount     Int       @default(12)
-  detailedWeeks Int       @default(0) // How many weeks have full session detail
-  sessions      PlannedSession[]
-  outline       PlanWeekOutline[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  startDate      DateTime? // Monday of week 1 — anchors sessions to real calendar dates
+  currentPhase   String? // e.g., "Base", "Build", "Taper"
+  weekCount      Int               @default(12)
+  detailedWeeks  Int               @default(0) // How many weeks have full session detail
+  sessions       PlannedSession[]
+  outline        PlanWeekOutline[]
+  versions       PlanVersion[]
+  adaptations    Adaptation[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([userId])
 }
@@ -237,64 +240,133 @@ model TrainingPlan {
 /// High-level view of EVERY week from now until race day, even weeks whose
 /// individual sessions have not been generated in detail yet.
 model PlanWeekOutline {
-  id           String   @id @default(cuid())
-  planId       String
-  plan         TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-  week         Int
-  phase        String   // Base / Build / Peak / Taper / Race
-  focus        String?  // What this week is for
-  targetHours  Float?
-  targetTss    Int?
-  isRaceWeek   Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  id          String       @id @default(cuid())
+  planId      String
+  plan        TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  week        Int
+  phase       String // Base / Build / Peak / Taper / Race
+  focus       String? // What this week is for
+  targetHours Float?
+  targetTss   Int?
+  isRaceWeek  Boolean      @default(false)
+  createdAt   DateTime     @default(now())
 
   @@unique([planId, week])
   @@index([planId])
 }
 
 model PlannedSession {
-  id            String    @id @default(cuid())
+  id            String       @id @default(cuid())
   planId        String
   plan          TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   week          Int
-  phase         String?   // e.g., "Base Building" (week-level metadata)
-  summary       String?   // Week overview text (week-level metadata)
-  day           String    // e.g., "Monday"
-  discipline    String    // e.g., "Swim", "Bike", "Run", "Brick"
-  type          String    // e.g., "Endurance", "Tempo", "Recovery"
-  duration      String    // e.g., "45 min"
-  tss           Int       // Training Stress Score
-  instructions  String?   // Detailed workout instructions
-  pace          String?   // Pace/effort guidance
-  status        String    @default("planned") // e.g., "planned", "completed", "skipped", "adapted"
-  actualTss     Int?      // Actual TSS from Garmin
+  phase         String? // e.g., "Base Building" (week-level metadata)
+  summary       String? // Week overview text (week-level metadata)
+  day           String // e.g., "Monday"
+  // The real calendar day this session sits on. Derived from the plan's
+  // startDate at creation, but authoritative afterwards: the adaptation engine
+  // moves sessions by changing this, which "Week 2, Wednesday" cannot express.
+  scheduledDate DateTime?
+  discipline    String // e.g., "Swim", "Bike", "Run", "Brick"
+  type          String // e.g., "Endurance", "Tempo", "Recovery"
+  duration      String // e.g., "45 min"
+  tss           Int // Training Stress Score
+  instructions  String? // Detailed workout instructions
+  pace          String? // Pace/effort guidance
+  status        String       @default("planned") // e.g., "planned", "completed", "skipped", "adapted"
+  actualTss     Int? // Actual TSS from a completed activity
   completedAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
+
+  // --- Adaptation engine fields ---------------------------------------
+  // Anchor sessions survive every daily adaptation (spec Part 3.2).
+  isAnchor     Boolean   @default(false)
+  // What the session is *for*. The solver preserves purpose, not shape.
+  purpose      String?
+  // Where this session started, so we can always show what changed.
+  originalDate DateTime?
+  originalTss  Int?
+  // Set when the engine has moved or reshaped this session.
+  adaptedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([planId, week])
+  @@index([planId, scheduledDate])
+}
+
+/// An immutable snapshot of a plan at a point in time (spec Part 2.4).
+/// Plans are event-sourced: we never silently overwrite, we version.
+model PlanVersion {
+  id        String       @id @default(cuid())
+  planId    String
+  plan      TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  version   Int
+  /// Full session list as it stood, so any version can be reconstructed.
+  snapshot  Json
+  createdAt DateTime     @default(now())
+
+  adaptations Adaptation[]
+
+  @@unique([planId, version])
+  @@index([planId, createdAt])
+}
+
+/// A single, signed adaptation event: why the plan changed and exactly what
+/// changed. Append-only — this is the audit trail the athlete can read.
+model Adaptation {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId    String
+  plan      TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  versionId String?
+  version   PlanVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  /// Which signal engine caused this, e.g. "execution_drift", "guardrail".
+  trigger        String
+  /// Machine-readable cause: the constraints that were emitted.
+  cause          Json
+  /// The concrete before/after per session.
+  diff           Json
+  /// Plan scores either side of the change, for the hysteresis audit.
+  scoreBefore    Float?
+  scoreAfter     Float?
+  /// Hash of the inputs, so an identical situation is detectable.
+  inputHash      String?
+  /// Natural-language rationale: cause -> action -> what it protects.
+  explanation    String?
+  /// "applied" | "rejected_hysteresis" | "blocked_frozen" | "no_change"
+  outcome        String  @default("applied")
+  /// Athlete feedback, for the learning layer later.
+  athleteVerdict String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([planId, createdAt])
 }
 
 model GarminToken {
-  id            String    @id @default(cuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken   String
-  refreshToken  String?
-  expiresAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model GoogleCalendarToken {
-  id            String    @id @default(cuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken   String
-  refreshToken  String?
-  expiresAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model StravaToken {
@@ -303,8 +375,8 @@ model StravaToken {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken   String
   refreshToken  String
-  expiresAt     DateTime  // Strava access tokens are short-lived (~6h)
-  athleteId     String?   // Strava athlete id
+  expiresAt     DateTime // Strava access tokens are short-lived (~6h)
+  athleteId     String? // Strava athlete id
   athleteName   String?
   scope         String?
   lastSyncedAt  DateTime? // When the background job last pulled activities
@@ -314,30 +386,30 @@ model StravaToken {
 }
 
 model StravaActivity {
-  id             String    @id @default(cuid())
+  id             String             @id @default(cuid())
   userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stravaId       String    // Strava's own activity id (used to avoid duplicates)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stravaId       String // Strava's own activity id (used to avoid duplicates)
   name           String
-  sportType      String    // Raw Strava type, e.g. "Run", "Ride", "Swim"
-  discipline     String    // Normalised: Swim | Bike | Run | Strength | Other
+  sportType      String // Raw Strava type, e.g. "Run", "Ride", "Swim"
+  discipline     String // Normalised: Swim | Bike | Run | Strength | Other
   startDate      DateTime
-  movingTime     Int       // seconds
-  elapsedTime    Int?      // seconds
-  distance       Float     // meters
-  elevationGain  Float?    // meters
+  movingTime     Int // seconds
+  elapsedTime    Int? // seconds
+  distance       Float // meters
+  elevationGain  Float? // meters
   avgHeartRate   Float?
   maxHeartRate   Float?
-  avgSpeed       Float?    // m/s
+  avgSpeed       Float? // m/s
   avgWatts       Float?
-  sufferScore    Float?    // Strava "relative effort" when available
-  estimatedTss   Int       // Our own training-load estimate
-  isTrainer      Boolean   @default(false)
+  sufferScore    Float? // Strava "relative effort" when available
+  estimatedTss   Int // Our own training-load estimate
+  isTrainer      Boolean            @default(false)
   /// Whether we have pulled the detailed activity (for official best efforts).
-  detailsFetched Boolean   @default(false)
+  detailsFetched Boolean            @default(false)
   bestEfforts    StravaBestEffort[]
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@unique([userId, stravaId])
   @@index([userId, startDate])
@@ -346,17 +418,17 @@ model StravaActivity {
 /// Official "best effort" splits Strava calculates inside a run
 /// (e.g. the fastest 5 km contained within a 10 km run).
 model StravaBestEffort {
-  id          String   @id @default(cuid())
+  id          String         @id @default(cuid())
   activityId  String
   activity    StravaActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   userId      String
-  name        String   // "5k", "10k", "Half-Marathon", "Marathon", ...
-  distance    Float    // metres
-  elapsedTime Int      // seconds
+  name        String // "5k", "10k", "Half-Marathon", "Marathon", ...
+  distance    Float // metres
+  elapsedTime Int // seconds
   movingTime  Int?
   startDate   DateTime
-  createdAt   DateTime @default(now())
+  createdAt   DateTime       @default(now())
 
-  @@index([userId, name])
   @@unique([activityId, name])
+  @@index([userId, name])
 }

@@ -49,6 +49,28 @@ export function addDays(date: Date, days: number): Date {
   return d;
 }
 
+/**
+ * The Monday that week 1 of a plan actually starts on.
+ *
+ * A plan's `startDate` is *documented* as the Monday of week 1, but stored
+ * values do not always honour that: plans generated in another timezone land
+ * on 20:00 or 22:00 UTC, which reads as the *previous* day locally. Anchoring
+ * straight to `startOfDay(startDate)` then shifted every session by a day, so
+ * "Monday" sessions appeared on Sunday and the Today screen showed the wrong
+ * workout.
+ *
+ * Normalising to the **nearest** Monday repairs that without moving a correct
+ * plan: an exact Monday stays put, and a one-day timezone slip snaps back.
+ */
+export function planWeekOneMonday(planStartDate: Date): Date {
+  const d = startOfDay(planStartDate);
+  const jsDay = d.getDay(); // 0=Sun..6=Sat
+  // Distance to the Monday before (0..6) and the Monday after (0..6).
+  const back = (jsDay + 6) % 7;
+  const forward = (8 - jsDay) % 7;
+  return back <= forward ? addDays(d, -back) : addDays(d, forward);
+}
+
 /** The real calendar date for a given session, or null if the day is invalid. */
 export function sessionDate(
   planStartDate: Date,
@@ -57,7 +79,7 @@ export function sessionDate(
 ): Date | null {
   const dayIndex = dayNameToIndex(day);
   if (dayIndex < 0) return null;
-  const base = startOfDay(planStartDate);
+  const base = planWeekOneMonday(planStartDate);
   return addDays(base, (week - 1) * 7 + dayIndex);
 }
 
@@ -78,7 +100,8 @@ export function daysBetween(from: Date, to: Date): number {
 
 /** Which plan week does `date` fall into? (1-based; 0 if before the plan.) */
 export function weekNumberFor(planStartDate: Date, date: Date): number {
-  const diff = daysBetween(planStartDate, date);
+  // Must use the same anchor as sessionDate, or weeks and sessions disagree.
+  const diff = daysBetween(planWeekOneMonday(planStartDate), date);
   if (diff < 0) return 0;
   return Math.floor(diff / 7) + 1;
 }
