@@ -36,11 +36,7 @@ export const NAV: NavItem[] = [
   {
     label: "Plan",
     href: "/season",
-    match: ["/season", "/dashboard"],
-    sub: [
-      { label: "Season", href: "/season" },
-      { label: "All weeks", href: "/dashboard" },
-    ],
+    match: ["/season"],
   },
   {
     label: "Me",

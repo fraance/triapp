@@ -134,7 +134,7 @@ check("no public route appears in the nav", !PUBLIC_ROUTES.some((r) => reachable
 check("the auth cookie carries no identity", AUTH_COOKIE === "triapp_auth");
 
 console.log("\nActive-tab lookup:");
-check("/dashboard activates Plan", activeNavItem("/dashboard")?.label === "Plan");
+check("/season activates Plan", activeNavItem("/season")?.label === "Plan");
 check("/race activates Me", activeNavItem("/race")?.label === "Me");
 check("/strava activates Settings", activeNavItem("/strava")?.label === "Settings");
 check("an unknown path activates nothing", activeNavItem("/nope") === undefined);
