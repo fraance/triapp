@@ -258,6 +258,7 @@ plan. That is what makes every change reproducible and explainable.
 | `types.ts` | Load vectors, constraints, solver types |
 | `load-vector.ts` | 4-component load, EWMA, ACWR, daily series |
 | `guardrails.ts` | Inviolable limits — checked, never weighted |
+| `reconcile.ts` | Writes what actually happened back onto the plan |
 | `signals.ts` | Execution drift, missed-session salvage, fatigue pressure |
 | `solver.ts` | Deterministic beam search + scoring |
 | `engine.ts` | Orchestration, hysteresis, versioning, audit log |
@@ -294,12 +295,37 @@ Athlete-facing log: `/api/adaptations`, shown on Today under "What changed".
 | Logistics / calendar | Google Calendar not built |
 | Learning layer (contextual bandits) | Needs months of accept/reject history. `Adaptation.athleteVerdict` exists to collect it. |
 
+### Fixed 31 July 2026: the plan never reflected reality
+
+Nothing linked synced activities to planned sessions. The only thing that ever
+marked a session complete was the athlete tapping a button, so the week's log
+stayed at "planned" indefinitely — and the drift engine, having no completed
+sessions to compare against, concluded there was nothing to react to and left
+the future plan alone. Two further faults were hiding behind it:
+
+- The drift matcher paired planned and actual **by discipline**, so swapping a
+  run for a ride produced no signal at all. Comparison is now **per day**.
+- Drift constraints started "today", which is inside the commitment freeze, so
+  they could never be satisfied. The plan stayed permanently illegal while the
+  engine reported "no change". Constraints are clamped to the first adaptable
+  day, and an unrepairable plan now reports `blocked_frozen`.
+
+Session statuses are now `planned | completed | substituted | missed | skipped |
+adapted`. `skipped` is the athlete's own judgement and is never overwritten.
+
 ### Open questions for phase 2
 
 - Change minimality is not yet proven. A dry run on the CEO's real plan produced
   three moves where fewer might suffice; the solver takes the best legal plan it
   finds, and low-value extra moves are penalised but not forbidden.
 - No rate limit on adaptations yet (PRD: max 3 manual regenerations/day).
+- **No weekly rebalancing.** Drift constraints only span 48 h, so a week that
+  overshoots is damped for two days rather than compensated across the
+  following week's targets. This is the most valuable next increment.
+- Unplanned activities are counted in load but never become sessions, so the
+  log shows a rest day where real training happened.
+- The solver may move a session onto a day that already holds a "Rest" entry,
+  which reads oddly even though rest carries no load.
 - Anchor sessions are never set — `isAnchor` defaults false, so nothing is
   currently protected as a key session. The macro planner (spec Part 3) needs
   to assign them.
