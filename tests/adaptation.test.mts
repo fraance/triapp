@@ -47,6 +47,7 @@ import {
   adaptPlanForUser,
 } from "../lib/adaptation/engine";
 import { describeChanges } from "../lib/adaptation/narrator";
+import { reconcilePlanWithActivities, dailyPlannedVsActual } from "../lib/adaptation/reconcile";
 import { SolverSession, ZERO_LOAD } from "../lib/adaptation/types";
 import { createUser } from "../lib/db";
 import { prisma } from "../lib/prisma";
@@ -427,6 +428,124 @@ async function main() {
       check("a rejected change is still recorded, not silently dropped",
         logged.some((l) => l.outcome !== "applied") || applied.outcome === "no_change");
     }
+    // ---- Reconciliation: the plan must reflect what actually happened ----
+    console.log("\nThe plan is reconciled against what was actually done:");
+
+    const recEmail = `recon-${Date.now()}@test.local`;
+    const recUser = await createUser(recEmail, "pw-test-1234");
+    try {
+      const recPlan = await prisma.trainingPlan.create({
+        data: {
+          userId: recUser.id,
+          targetRaceDate: new Date("2026-09-13T00:00:00"),
+          startDate: new Date("2026-07-27T00:00:00"),
+          weekCount: 7,
+        },
+      });
+
+      // Mirrors the real deviation: one session done as planned, one swapped
+      // for a different sport, one missed entirely, one rest day.
+      const spec: Array<[string, string, string, number]> = [
+        ["2026-07-27", "Monday", "Swim", 45],
+        ["2026-07-28", "Tuesday", "Bike", 75],
+        ["2026-07-29", "Wednesday", "Run", 50],
+        ["2026-07-30", "Thursday", "Rest", 0],
+      ];
+      for (const [date, day, discipline, tss] of spec) {
+        await prisma.plannedSession.create({
+          data: {
+            planId: recPlan.id, week: 1, day,
+            scheduledDate: new Date(date + "T00:00:00"),
+            discipline, type: discipline === "Rest" ? "Rest" : "Endurance",
+            duration: "60 min", tss, status: "planned",
+          },
+        });
+      }
+
+      // Did the swim as planned; rode instead of running; nothing on Tuesday.
+      await prisma.stravaActivity.createMany({
+        data: [
+          { userId: recUser.id, stravaId: `r1-${Date.now()}`, name: "Swim",
+            sportType: "Swim", discipline: "Swim",
+            startDate: new Date("2026-07-27T08:00:00"), movingTime: 2700,
+            distance: 2000, estimatedTss: 40, isTrainer: false, detailsFetched: false },
+          { userId: recUser.id, stravaId: `r2-${Date.now()}`, name: "Ride",
+            sportType: "Ride", discipline: "Bike",
+            startDate: new Date("2026-07-29T08:00:00"), movingTime: 4500,
+            distance: 45000, estimatedTss: 95, isTrainer: false, detailsFetched: false },
+        ],
+      });
+
+      const rec = await reconcilePlanWithActivities(recUser.id, {
+        now: new Date("2026-07-31T09:00:00"),
+      });
+
+      check("a session done as planned is marked completed", rec.completed === 1, JSON.stringify(rec));
+      check("training a different sport is recorded as substituted", rec.substituted === 1, JSON.stringify(rec));
+      check("a day with no training at all is marked missed", rec.missed === 1, JSON.stringify(rec));
+
+      const after = await prisma.plannedSession.findMany({
+        where: { planId: recPlan.id }, orderBy: { scheduledDate: "asc" },
+      });
+      check("the completed session records what was actually done",
+        after[0].status === "completed" && after[0].actualTss === 40,
+        `${after[0].status} / ${after[0].actualTss}`);
+      check("the missed session carries no fake load",
+        after[1].status === "missed" && after[1].actualTss === null,
+        `${after[1].status} / ${after[1].actualTss}`);
+      check("the substituted session records the load actually done",
+        after[2].status === "substituted" && after[2].actualTss === 95,
+        `${after[2].status} / ${after[2].actualTss}`);
+      check("a planned rest day is never marked missed", after[3].status === "planned");
+
+      const again = await reconcilePlanWithActivities(recUser.id, {
+        now: new Date("2026-07-31T09:00:00"),
+      });
+      check("running it twice changes nothing further", again.changes.length === 0,
+        JSON.stringify(again.changes));
+
+      // Today is still in progress — it must not be judged.
+      const todayNotJudged = await reconcilePlanWithActivities(recUser.id, {
+        now: new Date("2026-07-29T09:00:00"),
+      });
+      check("today is never marked missed while it is still in progress",
+        todayNotJudged.examined <= 2, `examined ${todayNotJudged.examined}`);
+
+      // A deviation must now produce a real drift signal.
+      const pairs = await dailyPlannedVsActual(recUser.id, {
+        now: new Date("2026-07-31T09:00:00"), days: 5,
+      });
+      const wed = pairs.find((p) => p.date === "2026-07-29");
+      check("a swapped session still yields comparable planned vs actual load",
+        !!wed && wed.plannedLoad.length > 0 && wed.actualLoad.length > 0,
+        JSON.stringify(wed));
+      const tue = pairs.find((p) => p.date === "2026-07-28");
+      check("a missed day shows planned load with nothing done",
+        !!tue && tue.plannedLoad.length > 0 && tue.actualLoad.length === 0);
+
+      const manual = await prisma.plannedSession.create({
+        data: {
+          planId: recPlan.id, week: 1, day: "Friday",
+          scheduledDate: new Date("2026-07-30T00:00:00"),
+          discipline: "Run", type: "Endurance", duration: "60 min",
+          tss: 40, status: "skipped",
+        },
+      });
+      await reconcilePlanWithActivities(recUser.id, { now: new Date("2026-07-31T09:00:00") });
+      const stillSkipped = await prisma.plannedSession.findUnique({ where: { id: manual.id } });
+      check("a session the athlete skipped by hand is never overwritten",
+        stillSkipped?.status === "skipped", stillSkipped?.status);
+    } finally {
+      const rp = await prisma.trainingPlan.findMany({ where: { userId: recUser.id }, select: { id: true } });
+      await prisma.adaptation.deleteMany({ where: { userId: recUser.id } });
+      await prisma.planVersion.deleteMany({ where: { planId: { in: rp.map((p) => p.id) } } });
+      await prisma.plannedSession.deleteMany({ where: { planId: { in: rp.map((p) => p.id) } } });
+      await prisma.trainingPlan.deleteMany({ where: { userId: recUser.id } });
+      await prisma.stravaActivity.deleteMany({ where: { userId: recUser.id } });
+      await prisma.athleteProfile.deleteMany({ where: { userId: recUser.id } });
+      await prisma.user.deleteMany({ where: { id: recUser.id } });
+    }
+
   } finally {
     await prisma.adaptation.deleteMany({ where: { userId: user.id } });
     const plans = await prisma.trainingPlan.findMany({ where: { userId: user.id }, select: { id: true } });

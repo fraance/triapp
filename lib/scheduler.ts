@@ -1,6 +1,7 @@
 import { syncAllConnectedUsers } from "./strava-db";
 import { prisma } from "./prisma";
 import { adaptPlanForUser } from "./adaptation/engine";
+import { reconcilePlanWithActivities } from "./adaptation/reconcile";
 
 /**
  * In-process background scheduler for the Strava sync.
@@ -42,6 +43,8 @@ export interface SyncRunResult {
   failed?: number;
   totalAdded?: number;
   /** How many athletes had their plan changed as a result. */
+  /** Past sessions updated to match what was actually done. */
+  reconciled?: number;
   adapted?: number;
   durationMs?: number;
 }
@@ -86,9 +89,30 @@ export async function runSyncNow(
     // adaptation engine runs off the back of a successful sync (spec: the
     // event-driven adaptation loop). Failures here must never fail the sync.
     let adapted = 0;
+    let reconciled = 0;
     const adaptationOff = process.env.DISABLE_ADAPTATION === "1";
     for (const r of summary.results) {
-      if (!r.ok || adaptationOff) continue;
+      if (!r.ok) continue;
+
+      // Reconciliation runs regardless of whether adaptation is enabled: the
+      // plan must always show what actually happened, even if we choose not to
+      // change anything in response.
+      try {
+        const rec = await reconcilePlanWithActivities(r.userId);
+        reconciled += rec.changes.length;
+        if (rec.changes.length > 0) {
+          console.log(
+            `[reconcile] ${r.email ?? r.userId}: ${rec.completed} completed, ` +
+              `${rec.substituted} substituted, ${rec.missed} missed`
+          );
+        }
+      } catch (e: any) {
+        console.error(
+          `[reconcile] ${r.email ?? r.userId} failed: ${e?.message ?? e}`
+        );
+      }
+
+      if (adaptationOff) continue;
       try {
         const outcome = await adaptPlanForUser(r.userId, { trigger: "strava_sync" });
         if (outcome.outcome === "applied") {
@@ -107,13 +131,14 @@ export async function runSyncNow(
     const durationMs = Date.now() - started;
     console.log(
       `[strava-sync] ${summary.succeeded}/${summary.users} athletes ok, ` +
-        `${summary.totalAdded} new activities, ${adapted} plan(s) adapted, ${durationMs}ms`
+        `${summary.totalAdded} new activities, ${reconciled} session(s) reconciled, ` +
+        `${adapted} plan(s) adapted, ${durationMs}ms`
     );
     for (const r of summary.results.filter((r) => !r.ok)) {
       console.error(`[strava-sync] ${r.email ?? r.userId} failed: ${r.error}`);
     }
 
-    return { ran: true, ...summary, adapted, durationMs };
+    return { ran: true, ...summary, reconciled, adapted, durationMs };
   } finally {
     running = false;
   }

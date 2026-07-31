@@ -27,6 +27,7 @@ import {
   totalLoad,
 } from "./load-vector";
 import { executionDriftEngine, fatiguePressure, CompletedSession } from "./signals";
+import { dailyPlannedVsActual, reconcilePlanWithActivities } from "./reconcile";
 import { solve } from "./solver";
 import { GuardrailContext } from "./guardrails";
 import { narrate } from "./narrator";
@@ -51,6 +52,8 @@ export interface AdaptationOutcome {
     | "no_plan"
     | "skipped";
   reason?: string;
+  /** How the past week's log was updated to match reality. */
+  reconciled?: { completed: number; substituted: number; missed: number };
   changes?: SessionChange[];
   explanation?: string;
   scoreBefore?: number;
@@ -98,6 +101,15 @@ export async function adaptPlanForUser(
   });
   if (!plan) return { ran: false, outcome: "no_plan", reason: "no training plan" };
 
+  // ---- Reconcile first --------------------------------------------------
+  // The plan must reflect reality before we reason about it. Without this the
+  // week's log stayed at "planned" forever and the drift engine had nothing to
+  // compare against, so the plan never adapted.
+  const reconciled = await reconcilePlanWithActivities(userId, {
+    now,
+    dryRun: opts.dryRun,
+  });
+
   // ---- Sense ------------------------------------------------------------
   const horizonEnd = iso(addDays(startOfDay(now), HORIZON_DAYS));
 
@@ -113,7 +125,12 @@ export async function adaptPlanForUser(
   });
 
   if (rows.length === 0) {
-    return { ran: false, outcome: "no_plan", reason: "no sessions in the horizon" };
+    return {
+      ran: false,
+      outcome: "no_plan",
+      reason: "no sessions in the horizon",
+      reconciled: summarise(reconciled),
+    };
   }
 
   const sessions: SolverSession[] = rows
@@ -132,7 +149,12 @@ export async function adaptPlanForUser(
     }));
 
   if (sessions.length === 0) {
-    return { ran: false, outcome: "no_change", reason: "nothing left to adapt" };
+    return {
+      ran: false,
+      outcome: "no_change",
+      reason: "nothing left to adapt",
+      reconciled: summarise(reconciled),
+    };
   }
 
   // Completed training, for drift and chronic load.
@@ -174,34 +196,20 @@ export async function adaptPlanForUser(
       .map((c) => c.load)
   );
 
-  // Match completed activities to what had been planned that day, so drift is
-  // measured against intent rather than against nothing.
-  const plannedRecent = await prisma.plannedSession.findMany({
-    where: {
-      planId: plan.id,
-      scheduledDate: { gte: addDays(startOfDay(now), -4), lt: startOfDay(now) },
-    },
-    select: { scheduledDate: true, discipline: true, tss: true, type: true },
-  });
+  // Compare what was planned against what was done **per day**, not per
+  // discipline. Pairing like with like made the most important case invisible:
+  // if a run was swapped for a ride, neither side matched, so the engine
+  // concluded there was nothing comparable and left the plan untouched.
+  const dayPairs = await dailyPlannedVsActual(userId, { now, days: 4 });
 
-  const completed: CompletedSession[] = completedLoads
-    .filter((c) => c.date >= iso(addDays(startOfDay(now), -4)) && c.date < today)
-    .map((c) => {
-      const match = plannedRecent.find(
-        (p) =>
-          iso(p.scheduledDate!) === c.date &&
-          normaliseDiscipline(p.discipline) ===
-            normaliseDiscipline(disciplineOf(c.load, activities, c.date))
-      );
-      return {
-        date: c.date,
-        discipline: "",
-        actualLoad: c.load,
-        plannedLoad: match
-          ? loadVectorFor({ discipline: match.discipline, tss: match.tss, type: match.type })
-          : undefined,
-      };
-    });
+  const completed: CompletedSession[] = dayPairs.map((d) => ({
+    date: d.date,
+    discipline: "",
+    actualLoad: sumLoad(d.actualLoad),
+    // A planned day with nothing done is a real signal (load shortfall), so
+    // the planned side is always supplied when the day had a plan.
+    plannedLoad: d.plannedLoad.length > 0 ? sumLoad(d.plannedLoad) : undefined,
+  }));
 
   // ---- Interpret --------------------------------------------------------
   const drift = executionDriftEngine(completed, today);
@@ -223,6 +231,7 @@ export async function adaptPlanForUser(
       ran: true,
       outcome: "no_change",
       reason: "recent training matched the plan",
+      reconciled: summarise(reconciled),
     };
   }
 
@@ -234,10 +243,22 @@ export async function adaptPlanForUser(
 
   const frozenUntil = freezeBoundary(now);
 
+  // Constraints must not target days the solver is forbidden to touch.
+  // Drift constraints naturally start "today", but today is inside the
+  // commitment window, so the constraint could never be satisfied: the plan
+  // stayed permanently illegal and the engine reported "no change" while
+  // actually being stuck. Clamp each constraint to the first adaptable day.
+  const firstAdaptable = iso(addDays(new Date(frozenUntil + "T00:00:00"), 1));
+  const clamped = constraints.map((c) =>
+    c.fromDate && c.fromDate <= frozenUntil
+      ? { ...c, fromDate: firstAdaptable }
+      : c
+  );
+
   const input = {
     today,
     sessions,
-    constraints,
+    constraints: clamped,
     preferences,
     chronicLoad,
     frozenUntil,
@@ -248,8 +269,41 @@ export async function adaptPlanForUser(
 
   const diff = diffPlans(sessions, result.sessions);
 
+  // If the plan still breaks a hard rule and the solver could not repair it,
+  // say so. Reporting "no change" here would hide a real problem behind a
+  // reassuring message.
+  if (result.violations.length > 0) {
+    await recordAdaptation({
+      userId,
+      planId: plan.id,
+      trigger,
+      cause: { constraints: clamped, facts: drift.facts },
+      diff,
+      scoreBefore: before.score,
+      scoreAfter: result.score,
+      inputHash: "",
+      explanation:
+        "Your plan needs to change but no safe version could be found within " +
+        "the locked days: " + result.violations.slice(0, 3).join("; "),
+      outcome: "blocked_frozen",
+    });
+    return {
+      ran: true,
+      outcome: "blocked_frozen",
+      reason: result.violations.slice(0, 3).join("; "),
+      reconciled: summarise(reconciled),
+      scoreBefore: before.score,
+      scoreAfter: result.score,
+    };
+  }
+
   if (diff.empty) {
-    return { ran: true, outcome: "no_change", reason: "the current plan is already best" };
+    return {
+      ran: true,
+      outcome: "no_change",
+      reason: "the current plan is already best",
+      reconciled: summarise(reconciled),
+    };
   }
 
   // ---- Commit: hysteresis (spec 4.4) ------------------------------------
@@ -268,7 +322,7 @@ export async function adaptPlanForUser(
       userId,
       planId: plan.id,
       trigger,
-      cause: { constraints, facts: drift.facts },
+      cause: { constraints: clamped, facts: drift.facts },
       diff,
       scoreBefore: before.score,
       scoreAfter: result.score,
@@ -280,6 +334,7 @@ export async function adaptPlanForUser(
     return {
       ran: true,
       outcome: "rejected_hysteresis",
+      reconciled: summarise(reconciled),
       reason: `improvement below the ${Math.round((HYSTERESIS_FACTOR - 1) * 100)}% threshold`,
       scoreBefore: before.score,
       scoreAfter: result.score,
@@ -289,7 +344,7 @@ export async function adaptPlanForUser(
   // ---- Explain ----------------------------------------------------------
   const explanation = await narrate({
     trigger,
-    constraints,
+    constraints: clamped,
     diff,
     facts: drift.facts,
   });
@@ -299,6 +354,7 @@ export async function adaptPlanForUser(
       ran: true,
       outcome: "applied",
       reason: "dry run — nothing written",
+      reconciled: summarise(reconciled),
       changes: diff.changes,
       explanation,
       scoreBefore: before.score,
@@ -332,7 +388,7 @@ export async function adaptPlanForUser(
     planId: plan.id,
     versionId: version.id,
     trigger,
-    cause: { constraints, facts: drift.facts },
+    cause: { constraints: clamped, facts: drift.facts },
     diff,
     scoreBefore: before.score,
     scoreAfter: result.score,
@@ -344,6 +400,7 @@ export async function adaptPlanForUser(
   return {
     ran: true,
     outcome: "applied",
+    reconciled: summarise(reconciled),
     changes: diff.changes,
     explanation,
     scoreBefore: before.score,
@@ -353,6 +410,10 @@ export async function adaptPlanForUser(
 }
 
 // ---- helpers --------------------------------------------------------------
+
+function summarise(r: { completed: number; substituted: number; missed: number }) {
+  return { completed: r.completed, substituted: r.substituted, missed: r.missed };
+}
 
 function solveScore(
   input: Parameters<typeof solve>[0],

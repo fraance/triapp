@@ -373,8 +373,11 @@ export async function getTodayView(
 
   const weekSessions = plan.sessions.filter((s) => s.week === currentWeek);
   const weekTssPlanned = weekSessions.reduce((sum, s) => sum + (s.tss || 0), 0);
+  // Counts what was actually trained. "substituted" days matter here: the
+  // athlete did train, just not the prescribed discipline, and ignoring that
+  // understated the week and left the plan looking untouched.
   const weekTssCompleted = weekSessions
-    .filter((s) => s.status === "completed")
+    .filter((s) => s.status === "completed" || s.status === "substituted")
     .reduce((sum, s) => sum + (s.actualTss ?? s.tss ?? 0), 0);
 
   const weekMeta = weekSessions[0];
