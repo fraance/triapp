@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { GarminConnect } from "@/components/GarminConnect";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
@@ -20,33 +21,16 @@ interface Profile {
   runDifficulty?: number;
 }
 
-interface Session {
-  day: string;
-  discipline: string;
-  type: string;
-  duration: string;
-  tss: number;
-  instructions: string;
-  pace: string;
-}
-
-interface Week {
-  week: number;
-  phase: string;
-  summary: string;
-  sessions: Session[];
-}
-
 export default function ProfilePage() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<Profile>({});
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [plan, setPlan] = useState<Week[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedWeek, setSelectedWeek] = useState(0);
-  const [showPlan, setShowPlan] = useState(false);
   const [detailWeeks, setDetailWeeks] = useState("4");
+  // Only whether a plan exists, not its contents. The plan itself is shown on
+  // the Plan tab; this page just needs to know whether to offer a link to it.
+  const [hasPlan, setHasPlan] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -59,14 +43,11 @@ export default function ProfilePage() {
       })
       .catch((err) => console.error("Error loading profile:", err));
 
-    // Load the latest saved plan from the database
+    // Does a plan exist? Its contents live on the Plan tab.
     fetch(`/api/plans/latest?userId=${user.id}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data: any) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setPlan(data);
-          setShowPlan(true);
-        }
+        setHasPlan(Array.isArray(data) && data.length > 0);
       })
       .catch((err) => console.error("Error loading plan:", err));
   }, [user]);
@@ -120,8 +101,7 @@ export default function ProfilePage() {
         throw new Error(data.error || "Failed to generate plan");
       }
 
-      setPlan(data.weeks || []);
-      setShowPlan(true);
+      setHasPlan(true);
       setMessage(
         `Plan generated! ${data.totalWeeks} weeks to race day, first ${data.detailWeeks} weeks detailed.` +
           (data.usedStravaHistory ? " Based on your Strava history." : "") +
@@ -409,13 +389,23 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          <button
-            onClick={handleGeneratePlan}
-            disabled={isGenerating || !profile.raceDate}
-            className="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 font-semibold"
-          >
-            {isGenerating ? "Generating Plan..." : "Generate AI Training Plan"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleGeneratePlan}
+              disabled={isGenerating || !profile.raceDate}
+              className="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 font-semibold"
+            >
+              {isGenerating ? "Generating Plan..." : "Generate AI Training Plan"}
+            </button>
+            {hasPlan && (
+              <Link
+                href="/season"
+                className="text-indigo-700 border border-indigo-300 px-6 py-3 rounded-lg"
+              >
+                View my plan →
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Strava Integration Section */}
