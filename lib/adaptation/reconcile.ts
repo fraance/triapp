@@ -81,21 +81,27 @@ export async function reconcilePlanWithActivities(
   const plan = await prisma.trainingPlan.findFirst({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    select: { id: true },
+    select: { id: true, startDate: true },
   });
   if (!plan) return empty;
+
+  // Training done before the plan existed is history, not plan execution.
+  // Without this bound, reconciliation reached back 21 days and manufactured
+  // "unplanned" sessions for activities that predated the plan entirely.
+  const windowStart =
+    plan.startDate && plan.startDate > from ? plan.startDate : from;
 
   // Only past days are judged. `lt: today` deliberately excludes today.
   const sessions = await prisma.plannedSession.findMany({
     where: {
       planId: plan.id,
-      scheduledDate: { gte: from, lt: today },
+      scheduledDate: { gte: windowStart, lt: today },
     },
     orderBy: { scheduledDate: "asc" },
   });
 
   const activities = await prisma.stravaActivity.findMany({
-    where: { userId, startDate: { gte: from, lt: addDays(today, 1) } },
+    where: { userId, startDate: { gte: windowStart, lt: addDays(today, 1) } },
     orderBy: { startDate: "asc" },
   });
 
@@ -202,7 +208,11 @@ export async function reconcilePlanWithActivities(
   // in the plan. Otherwise the log shows a rest day where the athlete actually
   // trained, and the week reads as lighter than it was.
   const leftover = activities.filter(
-    (a) => !consumed.has(a.id) && localISO(a.startDate) < localISO(today)
+    (a) =>
+      !consumed.has(a.id) &&
+      localISO(a.startDate) < localISO(today) &&
+      // A zero-length activity is a Strava artefact, not training.
+      a.movingTime > 60
   );
   result.unplanned = leftover.length;
 

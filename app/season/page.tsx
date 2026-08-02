@@ -35,6 +35,7 @@ interface SeasonSession {
   type: string;
   duration: string;
   tss: number;
+  actualTss: number | null;
   instructions: string;
   pace: string;
   status: string;
@@ -112,6 +113,7 @@ export default function PlanPage() {
         type: s.type,
         duration: s.duration,
         tss: s.tss,
+        actualTss: s.actualTss ?? null,
         status: s.status,
         isAnchor: s.isAnchor,
         date: at[s.id] ?? s.date,

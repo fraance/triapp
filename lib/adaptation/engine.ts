@@ -43,6 +43,7 @@ import {
 } from "./availability-window";
 import { solve } from "./solver";
 import { GuardrailContext } from "./guardrails";
+import { analyseLimiters, describeLimiters, LimiterAnalysis } from "./limiter";
 import { narrate } from "./narrator";
 import { startOfDay } from "../plan-dates";
 
@@ -130,7 +131,11 @@ export async function adaptPlanForUser(
   // Make sure each upcoming week has key sessions the solver may not sacrifice
   // (v3 Part 3.2). Without this nothing is protected and the engine is free to
   // dismantle the week's most important workouts.
-  if (!opts.dryRun) await ensureAnchors(plan.id, now);
+  // v3 §3.1: rank disciplines by where race time is actually won on this
+  // course, so key sessions and salvage decisions follow return on investment.
+  const limiters = await analyseLimitersFor(userId);
+
+  if (!opts.dryRun) await ensureAnchors(plan.id, now, limiters.priority);
 
   const horizonEnd = iso(addDays(startOfDay(now), HORIZON_DAYS));
 
@@ -369,6 +374,9 @@ export async function adaptPlanForUser(
           ...drift.facts,
           swap: swap.facts,
           availability: describeAvailability(availability),
+          limiters: limiters.hasData
+            ? { ranked: limiters.ranked, priority: limiters.priority }
+            : null,
           macro: macro.facts,
           macroAction: macro.action,
         },
@@ -418,6 +426,9 @@ export async function adaptPlanForUser(
           ...drift.facts,
           swap: swap.facts,
           availability: describeAvailability(availability),
+          limiters: limiters.hasData
+            ? { ranked: limiters.ranked, priority: limiters.priority }
+            : null,
           macro: macro.facts,
           macroAction: macro.action,
         },
@@ -494,6 +505,9 @@ export async function adaptPlanForUser(
           ...drift.facts,
           swap: swap.facts,
           availability: describeAvailability(availability),
+          limiters: limiters.hasData
+            ? { ranked: limiters.ranked, priority: limiters.priority }
+            : null,
           macro: macro.facts,
           macroAction: macro.action,
         },
@@ -522,7 +536,11 @@ export async function adaptPlanForUser(
  * Marks 2–3 anchor sessions per upcoming week, if none are set yet.
  * Idempotent, and never demotes an anchor the engine already chose.
  */
-export async function ensureAnchors(planId: string, now: Date): Promise<number> {
+export async function ensureAnchors(
+  planId: string,
+  now: Date,
+  priority?: Record<string, number>
+): Promise<number> {
   const from = startOfDay(now);
   const to = addDays(from, 21);
   const rows = await prisma.plannedSession.findMany({
@@ -536,7 +554,7 @@ export async function ensureAnchors(planId: string, now: Date): Promise<number> 
   let marked = 0;
   for (const [, weekRows] of byWeek) {
     if (weekRows.some((r) => r.isAnchor)) continue; // already decided
-    const ids = selectAnchors(weekRows);
+    const ids = selectAnchors(weekRows, 3, priority);
     if (ids.length === 0) continue;
     await prisma.plannedSession.updateMany({
       where: { id: { in: ids } },
@@ -645,6 +663,49 @@ function dailyCeilingFrom(loads: Array<{ date: string; load: LoadVector }>): num
   }
   const busiest = Math.max(...byDay.values());
   return Math.round(busiest * 1.1);
+}
+
+/**
+ * Builds the limiter analysis from measured athlete data and the researched
+ * race course. Anything unmeasured is left out rather than estimated.
+ */
+async function analyseLimitersFor(userId: string): Promise<LimiterAnalysis> {
+  const [profile, race, rides] = await Promise.all([
+    prisma.athleteProfile.findUnique({
+      where: { userId },
+      select: { swimCssSecPer100: true, runThresholdPaceSec: true, raceType: true },
+    }),
+    prisma.raceProfile.findUnique({ where: { userId } }),
+    prisma.stravaActivity.findMany({
+      where: { userId, discipline: "Bike", avgSpeed: { not: null } },
+      orderBy: { startDate: "desc" },
+      take: 30,
+      select: { avgSpeed: true },
+    }),
+  ]);
+
+  // Median, not mean: one commute or one descent should not define race speed.
+  const speeds = rides
+    .map((r) => r.avgSpeed!)
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b);
+  const bikeSpeedMs = speeds.length > 0 ? speeds[Math.floor(speeds.length / 2)] : null;
+
+  return analyseLimiters(
+    {
+      swimCssSecPer100: profile?.swimCssSecPer100 ?? null,
+      runThresholdPaceSec: profile?.runThresholdPaceSec ?? null,
+      bikeSpeedMs,
+    },
+    {
+      raceType: race?.distanceType ?? profile?.raceType ?? null,
+      swimEnvironment: race?.swimEnvironment ?? null,
+      wetsuitLikely: race?.wetsuitLikely ?? null,
+      bikeElevationGainM: race?.bikeElevationGainM ?? null,
+      runElevationGainM: race?.runElevationGainM ?? null,
+      runSurface: race?.runSurface ?? null,
+    }
+  );
 }
 
 /** Minutes available on each date in the horizon, from declared hours. */

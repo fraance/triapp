@@ -11,6 +11,7 @@ import {
   planWeekOneMonday,
 } from "./plan-dates";
 import { freezeBoundary } from "./reschedule";
+import { hideGhosts, didTrain } from "./session-status";
 
 // User functions
 export async function createUser(email: string, password: string) {
@@ -278,7 +279,10 @@ export interface DaySession {
   discipline: string;
   type: string;
   duration: string;
+  /** Prescribed load. Zero on unplanned training, which was never prescribed. */
   tss: number;
+  /** What it actually cost, once reconciled against Strava. */
+  actualTss: number | null;
   instructions: string;
   pace: string;
   status: string;
@@ -364,6 +368,7 @@ export async function getTodayView(
     type: item.session.type,
     duration: item.session.duration,
     tss: item.session.tss,
+    actualTss: item.session.actualTss ?? null,
     instructions: item.session.instructions ?? "",
     pace: item.session.pace ?? "",
     status: item.session.status,
@@ -376,28 +381,28 @@ export async function getTodayView(
    * v3 §2.4, the Baseline Rule: the database keeps the planned session as a
    * ghost record so the engine never loses its intent-vs-reality baseline, but
    * the athlete should not be shown a session they did not do alongside the one
-   * they did. Hide the ghost in the UI only.
+   * they did. Hidden in the UI only.
+   *
+   * The rule itself lives in `session-status.ts` so this screen and the
+   * calendar cannot disagree about what "done" means — they already had.
    */
-  const hideGhosts = (items: typeof dated) => {
-    const trainedOn = new Set(
-      items
-        .filter(
-          (d) =>
-            d.session.status === "completed" ||
-            d.session.status === "unplanned" ||
-            (d.session.actualTss ?? 0) > 0
-        )
-        .map((d) => toISODate(d.date))
+  const hideGhostItems = (items: typeof dated) => {
+    const keep = new Set(
+      hideGhosts(
+        items.map((d) => ({
+          id: d.session.id,
+          status: d.session.status,
+          date: toISODate(d.date),
+        }))
+      ).map((x) => x.id)
     );
-    return items.filter((d) => {
-      const ghost =
-        d.session.status === "substituted" || d.session.status === "missed";
-      return !(ghost && trainedOn.has(toISODate(d.date)));
-    });
+    return items.filter((d) => keep.has(d.session.id));
   };
 
-  const todaysItems = hideGhosts(dated.filter((d) => isSameDay(d.date, today)));
-  const tomorrowItems = hideGhosts(dated.filter((d) => isSameDay(d.date, tomorrow)));
+  const todaysItems = hideGhostItems(dated.filter((d) => isSameDay(d.date, today)));
+  const tomorrowItems = hideGhostItems(
+    dated.filter((d) => isSameDay(d.date, tomorrow))
+  );
 
   const currentWeek = weekNumberFor(planStart, today);
   const inPlanRange = currentWeek >= 1 && currentWeek <= plan.weekCount;
@@ -414,12 +419,7 @@ export async function getTodayView(
   // athlete did train, just not the prescribed discipline, and ignoring that
   // understated the week and left the plan looking untouched.
   const weekTssCompleted = weekSessions
-    .filter(
-      (s) =>
-        s.status === "completed" ||
-        s.status === "substituted" ||
-        s.status === "unplanned"
-    )
+    .filter((s) => didTrain(s.status))
     .reduce((sum, s) => sum + (s.actualTss ?? s.tss ?? 0), 0);
 
   const weekMeta = weekSessions[0];
@@ -544,7 +544,10 @@ export interface SeasonSession {
   discipline: string;
   type: string;
   duration: string;
+  /** Prescribed load. Zero on unplanned training, which was never prescribed. */
   tss: number;
+  /** What it actually cost, once reconciled against Strava. */
+  actualTss: number | null;
   instructions: string;
   pace: string;
   status: string;
@@ -616,6 +619,7 @@ export async function getSeasonView(
       type: s.type,
       duration: s.duration,
       tss: s.tss,
+      actualTss: s.actualTss ?? null,
       instructions: s.instructions ?? "",
       pace: s.pace ?? "",
       status: s.status,
@@ -623,8 +627,14 @@ export async function getSeasonView(
     });
   }
   // Chronological within each week, so the calendar can render rows in order.
-  for (const list of sessionsByWeek.values()) {
+  //
+  // Ghost sessions are dropped from the view but NOT from the database
+  // (v3 §2.4): on a day the athlete trained, showing the session they didn't
+  // do next to the one they did is just noise. Today's screen already did
+  // this; the calendar did not, which is why the two disagreed.
+  for (const [week, list] of sessionsByWeek) {
     list.sort((a, b) => a.date.localeCompare(b.date));
+    sessionsByWeek.set(week, hideGhosts(list));
   }
 
   const outlineByWeek = new Map(plan.outline.map((o) => [o.week, o]));

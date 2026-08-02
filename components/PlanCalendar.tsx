@@ -1,6 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  didTrain,
+  isSettled,
+  isUpcoming,
+  displayTss,
+  completedTss,
+} from "@/lib/session-status";
 
 /**
  * The plan calendar: weeks contain days, days contain draggable sessions.
@@ -24,7 +31,10 @@ export interface CalendarSession {
   discipline: string;
   type: string;
   duration: string;
+  /** Prescribed load. Zero for unplanned training, which was never prescribed. */
   tss: number;
+  /** What it actually cost, once reconciled against Strava. */
+  actualTss: number | null;
   status: string;
   isAnchor: boolean;
   /** Current day in the draft, ISO yyyy-mm-dd. */
@@ -71,9 +81,31 @@ function prettyDay(iso: string): string {
   });
 }
 
-/** Training that has already happened is a record, not a plan. */
-function isHistory(status: string): boolean {
-  return status !== "planned" && status !== "adapted";
+/**
+ * A settled day cannot be rearranged — but "settled" is not "achieved".
+ * Treating every non-planned status as history was what made missed sessions
+ * render green and count towards completed load.
+ */
+function isLocked(status: string): boolean {
+  return !isUpcoming(status);
+}
+
+/** How a settled session should read to the athlete. */
+function outcomeStyle(status: string): { label: string; className: string } {
+  switch (status) {
+    case "completed":
+      return { label: "completed", className: "text-green-700" };
+    case "unplanned":
+      return { label: "unplanned — done", className: "text-green-700" };
+    case "substituted":
+      return { label: "trained something else", className: "text-amber-700" };
+    case "missed":
+      return { label: "missed", className: "text-red-600" };
+    case "skipped":
+      return { label: "skipped", className: "text-gray-500" };
+    default:
+      return { label: status, className: "text-gray-500" };
+  }
 }
 
 export default function PlanCalendar({
@@ -173,7 +205,7 @@ export default function PlanCalendar({
   }, [hoverDate, onMove, endDrag, frozenUntil]);
 
   function startPress(e: React.PointerEvent, s: CalendarSession) {
-    if (isHistory(s.status) || s.date <= frozenUntil) return;
+    if (isLocked(s.status) || s.date <= frozenUntil) return;
     if (e.button !== 0 && e.pointerType === "mouse") return;
 
     const holdTimer = window.setTimeout(() => {
@@ -205,10 +237,12 @@ export default function PlanCalendar({
           addDaysISO(w.startDate, i)
         );
         const weekSessions = days.flatMap((d) => byDate.get(d) ?? []);
+        // Planned load is what was prescribed. Completed load is only what
+        // the athlete actually trained, valued at what it actually cost —
+        // previously this counted missed and skipped sessions as done.
         const planned = weekSessions.reduce((sum, s) => sum + s.tss, 0);
-        const done = weekSessions
-          .filter((s) => isHistory(s.status) && s.status !== "skipped")
-          .reduce((sum, s) => sum + s.tss, 0);
+        const done = weekSessions.reduce((sum, s) => sum + completedTss(s), 0);
+        const missed = weekSessions.filter((s) => s.status === "missed").length;
 
         return (
           <section
@@ -259,6 +293,11 @@ export default function PlanCalendar({
                 {done > 0 && (
                   <span>
                     <strong className="text-green-700">{done}</strong> completed
+                  </span>
+                )}
+                {missed > 0 && (
+                  <span className="text-red-600">
+                    {missed} missed
                   </span>
                 )}
                 {w.targetHours ? <span>{w.targetHours} h</span> : null}
@@ -315,7 +354,7 @@ export default function PlanCalendar({
                           </p>
                         ) : (
                           items.map((s) => {
-                            const locked = isHistory(s.status) || frozen;
+                            const locked = isLocked(s.status) || frozen;
                             return (
                               <div
                                 key={s.id}
@@ -330,7 +369,7 @@ export default function PlanCalendar({
                                 style={{ touchAction: locked ? "auto" : "none" }}
                                 title={
                                   locked
-                                    ? isHistory(s.status)
+                                    ? isLocked(s.status)
                                       ? `Already ${s.status}`
                                       : "This day is already committed"
                                     : "Press and hold to move"
@@ -346,11 +385,22 @@ export default function PlanCalendar({
                                   {s.type}
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  {s.duration} · {s.tss} TSS
+                                  {s.duration} · {displayTss(s)} TSS
+                                  {didTrain(s.status) &&
+                                    s.actualTss !== null &&
+                                    s.tss > 0 &&
+                                    s.actualTss !== s.tss && (
+                                      <span className="text-gray-400">
+                                        {" "}
+                                        (planned {s.tss})
+                                      </span>
+                                    )}
                                 </p>
-                                {isHistory(s.status) && (
-                                  <p className="text-xs text-green-700 font-medium">
-                                    {s.status}
+                                {isSettled(s.status) && (
+                                  <p
+                                    className={`text-xs font-medium ${outcomeStyle(s.status).className}`}
+                                  >
+                                    {outcomeStyle(s.status).label}
                                   </p>
                                 )}
                               </div>

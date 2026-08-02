@@ -239,7 +239,13 @@ function round2(n: number): number {
  */
 export function selectAnchors<T extends { id: string; discipline: string; tss: number }>(
   weekSessions: T[],
-  max = 3
+  max = 3,
+  /**
+   * ROI per discipline from the limiter analysis (v3 §3.1). When present,
+   * anchors are weighted towards the disciplines where race time is actually
+   * won, rather than simply the hardest session of each.
+   */
+  priority?: Record<string, number>
 ): string[] {
   const byDiscipline = new Map<string, T>();
   for (const s of weekSessions) {
@@ -248,8 +254,20 @@ export function selectAnchors<T extends { id: string; discipline: string; tss: n
     const current = byDiscipline.get(key);
     if (!current || s.tss > current.tss) byDiscipline.set(key, s);
   }
+
+  const weightOf = (s: T) => {
+    if (!priority) return s.tss;
+    const key = Object.keys(priority).find((k) =>
+      s.discipline.toLowerCase().includes(k)
+    );
+    // ROI is a 0..1 share; scale it so it meaningfully reorders equal sessions
+    // without letting a trivial session outrank a genuinely hard one.
+    const roi = key ? priority[key] : 0;
+    return s.tss * (1 + roi);
+  };
+
   return [...byDiscipline.values()]
-    .sort((a, b) => b.tss - a.tss || a.id.localeCompare(b.id))
+    .sort((a, b) => weightOf(b) - weightOf(a) || a.id.localeCompare(b.id))
     .slice(0, max)
     .map((s) => s.id);
 }
