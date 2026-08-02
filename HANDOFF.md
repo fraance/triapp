@@ -259,6 +259,7 @@ plan. That is what makes every change reproducible and explainable.
 | `load-vector.ts` | 4-component load, EWMA, ACWR, daily series |
 | `guardrails.ts` | Inviolable limits — checked, never weighted |
 | `reconcile.ts` | Writes what actually happened back onto the plan |
+| `macro-planner.ts` | Weekly intent, recovery weeks, anchor selection |
 | `signals.ts` | Execution drift, missed-session salvage, fatigue pressure |
 | `solver.ts` | Deterministic beam search + scoring |
 | `engine.ts` | Orchestration, hysteresis, versioning, audit log |
@@ -313,17 +314,50 @@ the future plan alone. Two further faults were hiding behind it:
 Session statuses are now `planned | completed | substituted | missed | skipped |
 adapted`. `skipped` is the athlete's own judgement and is never overwritten.
 
+### Weekly intent (added 2 Aug 2026)
+
+`macro-planner.ts` holds the coming week to a target, because drift constraints
+only span 48 h and a hot week was otherwise damped for two days then forgotten.
+
+**The rule that must not be softened (LOGIC_V2 §4.4): load debt is forgiven by
+default.** Undershooting NEVER raises a future target and never inflates the
+long ride or long run to repay a missed midweek session. Two consecutive weeks
+more than 25 % below plan bring the *plan* down to what is actually sustained.
+Overshoot is not symmetrical: it tightens the coming week, and a breached ramp
+rate pulls the recovery week forward (§4.3).
+
+Unplanned activities now become `status: "unplanned"` sessions with `tss = 0`
+and `actualTss` set, keyed on `sourceActivityId` so reconciliation is
+idempotent. They are never re-judged as if they were a plan.
+
+Anchors are assigned by `ensureAnchors()` (v3 §3.2). Selection is an explainable
+heuristic — highest-load session per discipline, max three — **not** the spec's
+race-course ROI ranking, which needs limiter analysis we cannot yet do.
+
+Two faults found by checking against real data, both fixed: the solver ignored
+`adapted` sessions (freezing them out of later adaptations and of the ramp
+guardrail), and the macro planner ignored the current week when setting the next
+week's target.
+
+### ⚠️ Concurrent edits
+
+Another session has committed to this repo during this work (`02c212b`,
+`a55d7f9`) and clobbered uncommitted changes. Commit early; re-read files before
+editing rather than trusting an earlier read.
+
 ### Open questions for phase 2
 
 - Change minimality is not yet proven. A dry run on the CEO's real plan produced
   three moves where fewer might suffice; the solver takes the best legal plan it
   finds, and low-value extra moves are penalised but not forbidden.
 - No rate limit on adaptations yet (PRD: max 3 manual regenerations/day).
-- **No weekly rebalancing.** Drift constraints only span 48 h, so a week that
-  overshoots is damped for two days rather than compensated across the
-  following week's targets. This is the most valuable next increment.
-- Unplanned activities are counted in load but never become sessions, so the
-  log shows a rest day where real training happened.
+- LOGIC_V2's hard rails are stricter and more specific than what is coded:
+  H4/H5 (long run ≤30 % of weekly run duration, long ride ≤45 %), H6 (≥1 rest
+  day per 9 days), H7 (intensity distribution), H8 (≤3 sessions/week above LT2),
+  H9 (monotony < 2.0), H10 (hours ≤ availability −12 %). None are implemented.
+- Execution Quality (LOGIC_V2 §4.2) is not computed — we have no zone adherence
+  or interval completion data from Strava summaries, only load.
+- Session priority (P1/P2/P3) from LOGIC_V2 is not modelled; only `isAnchor`.
 - The solver may move a session onto a day that already holds a "Rest" entry,
   which reads oddly even though rest carries no load.
 - Anchor sessions are never set — `isAnchor` defaults false, so nothing is
