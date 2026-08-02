@@ -8,7 +8,9 @@ import {
   weekNumberFor,
   daysBetween,
   addDays,
+  planWeekOneMonday,
 } from "./plan-dates";
+import { freezeBoundary } from "./reschedule";
 
 // User functions
 export async function createUser(email: string, password: string) {
@@ -489,7 +491,29 @@ export interface SeasonWeek {
   hasDetail: boolean;
   startDate: string | null;
   isCurrentWeek: boolean;
-  sessions: PlanSession[];
+  sessions: SeasonSession[];
+}
+
+/**
+ * A session as the calendar needs it: identified, dated, and carrying enough
+ * state for the UI to know whether it can be dragged.
+ *
+ * Distinct from `PlanSession`, which is the shape the AI coach writes and has
+ * no database identity yet.
+ */
+export interface SeasonSession {
+  id: string;
+  day: string;
+  /** Real calendar day, ISO yyyy-mm-dd. */
+  date: string;
+  discipline: string;
+  type: string;
+  duration: string;
+  tss: number;
+  instructions: string;
+  pace: string;
+  status: string;
+  isAnchor: boolean;
 }
 
 export interface SeasonView {
@@ -498,6 +522,8 @@ export interface SeasonView {
   detailedWeeks: number;
   raceDate: string | null;
   currentWeek: number | null;
+  /** Last committed day; sessions on or before it cannot be rescheduled. */
+  frozenUntil: string;
   weeks: SeasonWeek[];
 }
 
@@ -526,6 +552,7 @@ export async function getSeasonView(
       detailedWeeks: 0,
       raceDate: null,
       currentWeek: null,
+      frozenUntil: freezeBoundary(referenceDate),
       weeks: [],
     };
   }
@@ -533,19 +560,36 @@ export async function getSeasonView(
   const planStart = plan.startDate ?? plan.createdAt;
   const currentWeek = weekNumberFor(planStart, referenceDate);
 
-  // Group detailed sessions by week.
-  const sessionsByWeek = new Map<number, PlanSession[]>();
+  // Group sessions by week.
+  //
+  // `scheduledDate` wins where it exists: it is what the adaptation engine and
+  // manual rescheduling write, and the `week` column can lag behind a move.
+  // Deriving the week from the date means a moved session appears where it
+  // actually is, not where it was originally written.
+  const sessionsByWeek = new Map<number, SeasonSession[]>();
   for (const s of plan.sessions) {
-    if (!sessionsByWeek.has(s.week)) sessionsByWeek.set(s.week, []);
-    sessionsByWeek.get(s.week)!.push({
+    const date =
+      s.scheduledDate ?? sessionDate(planStart, s.week, s.day) ?? null;
+    if (!date) continue;
+    const week = s.scheduledDate ? weekNumberFor(planStart, date) : s.week;
+    if (!sessionsByWeek.has(week)) sessionsByWeek.set(week, []);
+    sessionsByWeek.get(week)!.push({
+      id: s.id,
       day: s.day,
+      date: toISODate(date),
       discipline: s.discipline,
       type: s.type,
       duration: s.duration,
       tss: s.tss,
       instructions: s.instructions ?? "",
       pace: s.pace ?? "",
+      status: s.status,
+      isAnchor: s.isAnchor,
     });
+  }
+  // Chronological within each week, so the calendar can render rows in order.
+  for (const list of sessionsByWeek.values()) {
+    list.sort((a, b) => a.date.localeCompare(b.date));
   }
 
   const outlineByWeek = new Map(plan.outline.map((o) => [o.week, o]));
@@ -559,7 +603,10 @@ export async function getSeasonView(
   for (let i = 1; i <= totalWeeks; i++) {
     const o = outlineByWeek.get(i);
     const sessions = sessionsByWeek.get(i) ?? [];
-    const weekStart = addDays(startOfDay(planStart), (i - 1) * 7);
+    // Anchor on the same Monday `sessionDate()` uses. Using the raw plan
+    // startDate here made the week header disagree with the sessions inside it
+    // whenever the plan was generated in another timezone.
+    const weekStart = addDays(planWeekOneMonday(planStart), (i - 1) * 7);
 
     weeks.push({
       week: i,
@@ -569,7 +616,7 @@ export async function getSeasonView(
       targetTss: o?.targetTss ?? null,
       isRaceWeek: o?.isRaceWeek ?? false,
       hasDetail: sessions.length > 0,
-      startDate: weekStart.toISOString().split("T")[0],
+      startDate: toISODate(weekStart),
       isCurrentWeek: i === currentWeek,
       sessions,
     });
@@ -579,8 +626,9 @@ export async function getSeasonView(
     hasPlan: true,
     totalWeeks,
     detailedWeeks: plan.detailedWeeks || sessionsByWeek.size,
-    raceDate: plan.targetRaceDate.toISOString().split("T")[0],
+    raceDate: toISODate(plan.targetRaceDate),
     currentWeek: currentWeek >= 1 && currentWeek <= totalWeeks ? currentWeek : null,
+    frozenUntil: freezeBoundary(referenceDate),
     weeks,
   };
 }

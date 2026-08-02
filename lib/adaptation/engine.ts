@@ -140,7 +140,11 @@ export async function adaptPlanForUser(
   }
 
   const sessions: SolverSession[] = rows
-    .filter((r) => r.status === "planned")
+    // "adapted" must be included. Filtering to "planned" alone froze every
+    // session the engine had already touched out of all future adaptations —
+    // and out of the weekly ramp guardrail, so the week's real total was
+    // understated.
+    .filter((r) => r.status === "planned" || r.status === "adapted")
     .map((r) => ({
       id: r.id,
       date: iso(r.scheduledDate!),
@@ -470,12 +474,15 @@ async function planWeeklyIntent(
   });
 
   const activities = await prisma.stravaActivity.findMany({
-    where: { userId, startDate: { gte: historyStart, lt: monday } },
+    where: { userId, startDate: { gte: historyStart, lt: addDays(monday, 7) } },
     select: { startDate: true, discipline: true, name: true, estimatedTss: true },
   });
 
   const history: WeekSummary[] = [];
-  for (let i = 4; i >= 1; i--) {
+  // i = 0 is the current week. It must be included: when the coming week is
+  // planned, the week that just happened is the most informative input, and
+  // excluding it meant the cap was set from stale or absent history.
+  for (let i = 4; i >= 0; i--) {
     const wkStart = addDays(monday, -7 * i);
     const wkEnd = addDays(wkStart, 7);
     const planned = sessions
