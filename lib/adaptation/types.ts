@@ -146,9 +146,15 @@ export interface SolverInput {
   frozenUntil?: string;
   /**
    * Days the athlete can accommodate a long session. Long sessions may only
-   * ever sit on these days (v3 §4.3). Empty means "weekends only".
+   * ever sit on these days (v3 §4.3).
    */
   longSessionDates?: string[];
+  /**
+   * Minutes actually available per date, from the athlete's declared hours.
+   * A date absent from this map is unconstrained — we never invent a limit the
+   * athlete did not give us.
+   */
+  availableMinutesByDate?: Record<string, number>;
 }
 
 export interface SolverResult {

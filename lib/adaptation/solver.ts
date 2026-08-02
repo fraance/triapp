@@ -181,6 +181,26 @@ export function hardViolations(
     }
   }
 
+  // v3 §4.3: a session must fit the time the athlete actually has that day.
+  // Days missing from the map are unconstrained rather than assumed to be zero.
+  if (input.availableMinutesByDate) {
+    const byDate = new Map<string, number>();
+    for (const s of candidate) {
+      if (s.dropped) continue;
+      byDate.set(s.date, (byDate.get(s.date) ?? 0) + s.durationMinutes);
+    }
+    for (const [date, minutes] of byDate) {
+      const available = input.availableMinutesByDate[date];
+      if (available === undefined) continue;
+      if (minutes > available + 1e-9) {
+        out.push(
+          `${date} needs ${Math.round(minutes)} min of training but you have ` +
+            `${Math.round(available)} min available`
+        );
+      }
+    }
+  }
+
   // The commitment freeze: sessions on or before `frozenUntil` may not move.
   if (input.frozenUntil) {
     for (const s of candidate) {
@@ -222,9 +242,14 @@ function expand(
         ...s,
         load: scaleLoad(baselineLoad(s), factor),
         tss: Math.round(baselineTss(s) * factor),
+        // Duration must scale with load. Leaving it untouched meant a shortened
+        // session still claimed its original slot, so a time constraint could
+        // never be satisfied by easing a session — only by dropping it.
+        durationMinutes: Math.round(baselineMinutes(s) * factor),
         scaledBy: factor,
         originalLoadForCap: baselineLoad(s),
         originalTssForCap: baselineTss(s),
+        originalMinutesForCap: baselineMinutes(s),
       };
       out.push(next);
     }
@@ -238,6 +263,8 @@ function expand(
       if (date < input.today) continue;
       if (input.unavailableDates?.includes(date)) continue;
       if (input.frozenUntil && date <= input.frozenUntil) continue;
+      const room = input.availableMinutesByDate?.[date];
+      if (room !== undefined && s.durationMinutes > room) continue;
       const next = clone(candidate);
       next[i] = { ...s, date, movedFrom: origin };
       out.push(next);
@@ -259,6 +286,9 @@ function baselineLoad(s: SolverSession): LoadVector {
 }
 function baselineTss(s: SolverSession): number {
   return s.originalTssForCap ?? s.tss;
+}
+function baselineMinutes(s: SolverSession): number {
+  return s.originalMinutesForCap ?? s.durationMinutes;
 }
 
 // ---- Search ---------------------------------------------------------------
@@ -286,6 +316,7 @@ export function solve(input: SolverInput, opts: SolveOptions): SolverResult {
     ...s,
     originalLoadForCap: s.originalLoadForCap ?? { ...s.load },
     originalTssForCap: s.originalTssForCap ?? s.tss,
+    originalMinutesForCap: s.originalMinutesForCap ?? s.durationMinutes,
   }));
 
   const startLegal =
@@ -400,5 +431,6 @@ declare module "./types" {
     /** Load before any scaling, so caps compare against the original. */
     originalLoadForCap?: LoadVector;
     originalTssForCap?: number;
+    originalMinutesForCap?: number;
   }
 }

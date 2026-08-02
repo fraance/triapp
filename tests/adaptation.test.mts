@@ -51,6 +51,14 @@ import { reconcilePlanWithActivities, dailyPlannedVsActual } from "../lib/adapta
 import { planNextWeek, selectAnchors, RECOVERY_WEEK_FACTOR } from "../lib/adaptation/macro-planner";
 import { crossSportSwapEngine } from "../lib/adaptation/signals";
 import { MIN_CHRONIC_HISTORY_DAYS } from "../lib/adaptation/guardrails";
+import {
+  weeklyHoursFrom,
+  hoursOn,
+  fitsOn,
+  datesThatFit,
+  unavailableDates,
+  preferredLongDates,
+} from "../lib/adaptation/availability-window";
 import { SolverSession, ZERO_LOAD } from "../lib/adaptation/types";
 import { createUser } from "../lib/db";
 import { prisma } from "../lib/prisma";
@@ -342,6 +350,130 @@ async function main() {
     text.includes("harder than planned") && text.includes("Run"), text);
   check("no changes means no story",
     describeChanges({ trigger: "t", constraints: [], diff: { empty: true, changes: [] } }) === "No changes were needed.");
+
+  // ======================================================================
+  console.log("\nv3 §4.3 — declared availability, not a weekend guess:");
+
+  // The CEO's placeholder profile: Mon-Thu 1h, Fri 0h, Sat 3h, Sun 4h.
+  const mock = weeklyHoursFrom({
+    noTimeConstraints: false,
+    monHours: 1, tueHours: 1, wedHours: 1, thuHours: 1,
+    friHours: 0, satHours: 3, sunHours: 4,
+    longSessionDay: "Sunday",
+  });
+
+  // 2026-08-03 is a Monday.
+  check("hours are read from the declared day, not assumed",
+    hoursOn(mock, "2026-08-03") === 1 && hoursOn(mock, "2026-08-08") === 3 &&
+    hoursOn(mock, "2026-08-09") === 4,
+    `mon ${hoursOn(mock, "2026-08-03")} sat ${hoursOn(mock, "2026-08-08")} sun ${hoursOn(mock, "2026-08-09")}`);
+  check("a day with zero hours has none", hoursOn(mock, "2026-08-07") === 0);
+
+  check("a 3h session cannot go on a 1h Monday", !fitsOn(mock, "2026-08-03", 180));
+  check("a 3h session fits Saturday", fitsOn(mock, "2026-08-08", 180));
+  check("a 45min session fits a 1h weekday", fitsOn(mock, "2026-08-03", 45));
+  check("a session never fits a zero-hour Friday", !fitsOn(mock, "2026-08-07", 30));
+
+  const longSlots = datesThatFit(mock, "2026-08-03", 7, 180);
+  check("only genuinely long-enough days can host a 3h session",
+    longSlots.every((d) => ["2026-08-08", "2026-08-09"].includes(d)) && longSlots.length === 2,
+    JSON.stringify(longSlots));
+
+  const fourHour = datesThatFit(mock, "2026-08-03", 7, 240);
+  check("a 4h session fits only Sunday", JSON.stringify(fourHour) === '["2026-08-09"]',
+    JSON.stringify(fourHour));
+
+  check("zero-hour days are reported as unavailable",
+    JSON.stringify(unavailableDates(mock, "2026-08-03", 7)) === '["2026-08-07"]',
+    JSON.stringify(unavailableDates(mock, "2026-08-03", 7)));
+
+  check("a stated long-session day is preferred when it fits",
+    JSON.stringify(preferredLongDates(mock, "2026-08-03", 7, 180)) === '["2026-08-09"]',
+    JSON.stringify(preferredLongDates(mock, "2026-08-03", 7, 180)));
+
+  // Never invent a limit the athlete has not given us (project rule 2).
+  const undeclared = weeklyHoursFrom(null);
+  check("an athlete who declared nothing is never blocked",
+    hoursOn(undeclared, "2026-08-03") === null && fitsOn(undeclared, "2026-08-03", 300));
+  check("no declaration means no unavailable days",
+    unavailableDates(undeclared, "2026-08-03", 7).length === 0);
+
+  const noLimits = weeklyHoursFrom({
+    noTimeConstraints: true,
+    monHours: 0, tueHours: 0, wedHours: 0, thuHours: 0,
+    friHours: 0, satHours: 0, sunHours: 0,
+  });
+  check("'no time constraints' means everything fits",
+    fitsOn(noLimits, "2026-08-03", 600) && noLimits.isSet);
+
+  console.log("\nThe solver honours declared availability:");
+
+  const availBase = {
+    today: "2026-08-03",
+    chronicLoad: { metabolic: 40, mechanical: 20, neuromuscular: 8, upper: 5 },
+    preferences: [], constraints: [],
+    availableMinutesByDate: {
+      "2026-08-03": 60, "2026-08-04": 60, "2026-08-05": 60, "2026-08-06": 60,
+      "2026-08-07": 0, "2026-08-08": 180, "2026-08-09": 240,
+    },
+    unavailableDates: ["2026-08-07"],
+    longSessionDates: ["2026-08-09"],
+  };
+  const availGuard = {
+    chronicLoad: availBase.chronicLoad,
+    previousWeekLoad: { metabolic: 150, mechanical: 80, neuromuscular: 30, upper: 20 },
+    chronicHistoryDays: 60,
+    longSessionDates: ["2026-08-09"],
+  };
+
+  const overbooked = [
+    session({ id: "big", date: "2026-08-04", tss: 70, discipline: "Bike",
+      durationMinutes: 150 }),
+  ];
+  check("a session longer than the day allows is a hard violation",
+    hardViolations(overbooked, { ...availBase, sessions: overbooked } as any).length > 0,
+    "150 min cannot fit a 60 min Tuesday");
+
+  const onFriday = [
+    session({ id: "fri", date: "2026-08-07", tss: 40, discipline: "Swim",
+      durationMinutes: 45 }),
+  ];
+  check("training is not scheduled on a zero-hour day",
+    hardViolations(onFriday, { ...availBase, sessions: onFriday } as any).length > 0);
+
+  const longOnSunday = [
+    session({ id: "lng", date: "2026-08-09", tss: 130, discipline: "Run",
+      type: "Long", durationMinutes: 210, isLong: true }),
+    session({ id: "wd", date: "2026-08-04", tss: 60, discipline: "Bike",
+      durationMinutes: 55 }),
+  ];
+  const availResult = solve(
+    { ...availBase, sessions: longOnSunday,
+      constraints: [{ kind: "cap_load", type: "hard", source: "test", reason: "cap", factor: 0.6 }],
+    } as any,
+    { guardrails: availGuard });
+  const availChanges = diffPlans(longOnSunday, availResult.sessions);
+  check("the long session is never moved onto a weekday that cannot hold it",
+    !availChanges.changes.some((c) => c.sessionId === "lng" && c.change === "moved"),
+    JSON.stringify(availChanges.changes));
+  const scaledFit = solve(
+    { ...availBase,
+      sessions: [session({ id: "toolong", date: "2026-08-04", tss: 90,
+        discipline: "Bike", durationMinutes: 120 })],
+    } as any,
+    { guardrails: availGuard });
+  check("easing a session shortens it, so it can fit the time available",
+    scaledFit.sessions[0].durationMinutes <= 60,
+    `${scaledFit.sessions[0].durationMinutes} min`);
+  check("the shortened session no longer breaches the day's limit",
+    hardViolations(scaledFit.sessions,
+      { ...availBase, sessions: scaledFit.sessions } as any).length === 0,
+    JSON.stringify(hardViolations(scaledFit.sessions, { ...availBase, sessions: scaledFit.sessions } as any)));
+
+  check("weekday volume is trimmed instead",
+    availChanges.changes.some((c) => c.sessionId === "wd") ||
+      availChanges.changes.length === 0,
+    JSON.stringify(availChanges.changes));
 
   // ======================================================================
   console.log("\nv3 §4.3 — real life anchors long sessions:");

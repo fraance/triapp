@@ -34,6 +34,13 @@ import {
 } from "./signals";
 import { dailyPlannedVsActual, reconcilePlanWithActivities } from "./reconcile";
 import { planNextWeek, selectAnchors, MacroState, WeekSummary } from "./macro-planner";
+import {
+  weeklyHoursFrom,
+  datesThatFit,
+  unavailableDates,
+  preferredLongDates,
+  describeAvailability,
+} from "./availability-window";
 import { solve } from "./solver";
 import { GuardrailContext } from "./guardrails";
 import { narrate } from "./narrator";
@@ -271,6 +278,25 @@ export async function adaptPlanForUser(
   }
 
   // ---- Solve ------------------------------------------------------------
+  // v3 §4.3: the athlete's declared hours decide when a long session can
+  // happen. Previously this was inferred from weekends, which is a guess and
+  // wrong for anyone who trains midweek or works Saturdays.
+  const availabilityRecord = await prisma.trainingAvailability.findUnique({
+    where: { userId },
+  });
+  const availability = weeklyHoursFrom(availabilityRecord);
+
+  // The longest session in the horizon sets the bar for what a day must hold.
+  const longestMinutes = Math.max(
+    0,
+    ...sessions.filter((s) => s.isLong).map((s) => s.durationMinutes)
+  );
+  const preferred = preferredLongDates(availability, today, HORIZON_DAYS, longestMinutes);
+  const longDates = preferred.length > 0
+    ? preferred
+    : datesThatFit(availability, today, HORIZON_DAYS, longestMinutes);
+  const noTimeDates = unavailableDates(availability, today, HORIZON_DAYS);
+
   // v3 §5 Cold Start Trap: count days we actually hold training data for.
   // Below 28 days the ACWR denominator is untrustworthy and would zero out the
   // athlete's week, so a daily ceiling governs instead.
@@ -284,7 +310,11 @@ export async function adaptPlanForUser(
     // Fallback ceiling from what the athlete has actually been doing, not an
     // invented number: their busiest recent day, with a little headroom.
     dailyLoadCeiling: dailyCeilingFrom(completedLoads),
-    longSessionDates: longSessionDatesFrom(sessions),
+    // Fall back to where long sessions already sit only when the athlete has
+    // declared nothing — never invent a limit they did not give us.
+    longSessionDates: availability.isSet
+      ? longDates
+      : longSessionDatesFrom(sessions),
   };
 
   const frozenUntil = freezeBoundary(now);
@@ -308,6 +338,11 @@ export async function adaptPlanForUser(
     preferences,
     chronicLoad,
     frozenUntil,
+    unavailableDates: noTimeDates,
+    longSessionDates: availability.isSet ? longDates : undefined,
+    availableMinutesByDate: availability.isSet
+      ? availableMinutesMap(availability, today, HORIZON_DAYS)
+      : undefined,
   };
 
   const before = solveScore(input, guardrails);
@@ -333,6 +368,7 @@ export async function adaptPlanForUser(
         facts: {
           ...drift.facts,
           swap: swap.facts,
+          availability: describeAvailability(availability),
           macro: macro.facts,
           macroAction: macro.action,
         },
@@ -381,6 +417,7 @@ export async function adaptPlanForUser(
         facts: {
           ...drift.facts,
           swap: swap.facts,
+          availability: describeAvailability(availability),
           macro: macro.facts,
           macroAction: macro.action,
         },
@@ -439,6 +476,7 @@ export async function adaptPlanForUser(
         scheduledDate: s.dropped ? undefined : new Date(s.date + "T00:00:00"),
         day: s.dropped ? undefined : weekdayName(s.date),
         tss: s.dropped ? undefined : Math.round(s.tss),
+        duration: s.dropped ? undefined : `${Math.round(s.durationMinutes)} min`,
         status: s.dropped ? "skipped" : "adapted",
         adaptedAt: now,
       },
@@ -455,6 +493,7 @@ export async function adaptPlanForUser(
         facts: {
           ...drift.facts,
           swap: swap.facts,
+          availability: describeAvailability(availability),
           macro: macro.facts,
           macroAction: macro.action,
         },
@@ -606,6 +645,23 @@ function dailyCeilingFrom(loads: Array<{ date: string; load: LoadVector }>): num
   }
   const busiest = Math.max(...byDay.values());
   return Math.round(busiest * 1.1);
+}
+
+/** Minutes available on each date in the horizon, from declared hours. */
+function availableMinutesMap(
+  availability: ReturnType<typeof weeklyHoursFrom>,
+  fromISO: string,
+  days: number
+): Record<string, number> | undefined {
+  if (!availability.isSet || availability.noTimeConstraints) return undefined;
+  const out: Record<string, number> = {};
+  const cursor = new Date(fromISO + "T00:00:00");
+  for (let i = 0; i < days; i++) {
+    const key = iso(cursor);
+    out[key] = (availability.byWeekday[cursor.getDay()] ?? 0) * 60;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
 }
 
 function mondayOf(d: Date): Date {
