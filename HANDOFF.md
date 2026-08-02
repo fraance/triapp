@@ -345,6 +345,35 @@ Another session has committed to this repo during this work (`02c212b`,
 `a55d7f9`) and clobbered uncommitted changes. Commit early; re-read files before
 editing rather than trusting an earlier read.
 
+### v3 rules applied (2 Aug 2026)
+
+The spec was revised mid-build. Rules now implemented, with the traps they
+exist to prevent:
+
+- **§2.4 Baseline Retention.** A completed deviation never overwrites the
+  planned session. The planned row survives as a ghost with its prescribed load
+  intact (`actualTss` stays null) — without it there is no baseline to measure
+  intent against reality. What was actually done becomes its own session.
+  Hiding happens in the UI (`hideGhosts` in `lib/db.ts`), never in the database.
+- **§4.3 The "Job" problem.** Sessions ≥120 min, or named "long", are pinned:
+  never moved, never dropped, only on an allowed day. Scaling one is penalised
+  ~4× a weekday session, so weekday volume is trimmed first. This also finally
+  implements "long runs are immovable", which was in the spec all along and had
+  been missed — it is why a Saturday long run was once moved to Sunday.
+- **§5 ACWR cold-start trap.** Below 28 days of history the denominator is
+  untrustworthy and ACWR would zero out the athlete's week. ACWR is skipped and
+  a daily ceiling, derived from the athlete's own busiest recent day, governs.
+- **§5 Cross-sport swap penalty.** Deliberately asymmetric: only swaps that
+  *add* leg loading (ran instead of swam) restrict lower-body intensity for
+  48 h. Penalising every swap equally would needlessly suppress training.
+
+Two recurring traps worth naming, both found again here:
+- `toISOString().slice(0,10)` on a local midnight rolls back a day in any
+  positive offset. Use `localISO()`. It silently shortened every constraint
+  window.
+- Prisma treats `undefined` as "leave unchanged". `actualTss: x ?? undefined`
+  could never clear a stale value.
+
 ### Open questions for phase 2
 
 - Change minimality is not yet proven. A dry run on the CEO's real plan produced
@@ -358,6 +387,11 @@ editing rather than trusting an earlier read.
 - Execution Quality (LOGIC_V2 §4.2) is not computed — we have no zone adherence
   or interval completion data from Strava summaries, only load.
 - Session priority (P1/P2/P3) from LOGIC_V2 is not modelled; only `isAnchor`.
+- Long-session allowed days are inferred (existing long-session days + weekends)
+  rather than read from the athlete's declared availability. Wire
+  `TrainingAvailability` in when per-day hours are set.
+- v3 §2.1 threshold confidence decay, §2.1 metabolic/glycogen state, §3.1
+  limiter analysis by race-course ROI, and §3.4 test injection are not built.
 - The solver may move a session onto a day that already holds a "Rest" entry,
   which reads oddly even though rest carries no load.
 - Anchor sessions are never set — `isAnchor` defaults false, so nothing is
