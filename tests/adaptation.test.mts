@@ -48,6 +48,7 @@ import {
 } from "../lib/adaptation/engine";
 import { describeChanges } from "../lib/adaptation/narrator";
 import { reconcilePlanWithActivities, dailyPlannedVsActual } from "../lib/adaptation/reconcile";
+import { planNextWeek, selectAnchors, RECOVERY_WEEK_FACTOR } from "../lib/adaptation/macro-planner";
 import { SolverSession, ZERO_LOAD } from "../lib/adaptation/types";
 import { createUser } from "../lib/db";
 import { prisma } from "../lib/prisma";
@@ -341,6 +342,74 @@ async function main() {
     describeChanges({ trigger: "t", constraints: [], diff: { empty: true, changes: [] } }) === "No changes were needed.");
 
   // ======================================================================
+  console.log("\nWeekly intent — load debt is forgiven, never repaid:");
+
+  const wk = (weekStart: string, plannedLoad: number, actualLoad: number) =>
+    ({ weekStart, plannedLoad, actualLoad });
+
+  const macroUnder = planNextWeek({
+    history: [wk("2026-07-20", 400, 300)],
+    chronicLoad: ZERO_LOAD, nextWeekPlanned: 420, nextWeekStart: "2026-08-03",
+  });
+  check("training under plan never raises next week's target",
+    macroUnder.targetLoad <= 420, `target ${macroUnder.targetLoad}`);
+  check("a single under-week changes nothing", macroUnder.action === "hold", macroUnder.action);
+  check("the athlete is told the debt is forgiven", /forgiven/i.test(macroUnder.reason));
+
+  const chronicShortfall = planNextWeek({
+    history: [wk("2026-07-13", 400, 240), wk("2026-07-20", 400, 250)],
+    chronicLoad: ZERO_LOAD, nextWeekPlanned: 420, nextWeekStart: "2026-08-03",
+  });
+  check("two weeks far below plan brings the PLAN down, not the athlete up",
+    chronicShortfall.action === "downgrade_plan", chronicShortfall.action);
+  check("the downgraded target lands near what is actually sustained",
+    chronicShortfall.targetLoad < 420 && chronicShortfall.targetLoad > 200,
+    String(chronicShortfall.targetLoad));
+
+  const macroOver = planNextWeek({
+    history: [wk("2026-07-20", 300, 420)],
+    chronicLoad: ZERO_LOAD, nextWeekPlanned: 320, nextWeekStart: "2026-08-03",
+  });
+  check("a big overshoot tightens the coming week",
+    ["tighten", "recovery_week"].includes(macroOver.action), macroOver.action);
+  check("tightening lowers the target", macroOver.targetLoad < 320, String(macroOver.targetLoad));
+  check("the cap is a hard constraint",
+    macroOver.constraints.some((c) => c.type === "hard" && c.kind === "cap_load"));
+  check("the cap is an absolute ceiling, not a per-session factor",
+    macroOver.constraints.every((c) => c.limit !== undefined));
+
+  const rampBreach = planNextWeek({
+    history: [wk("2026-07-13", 300, 300), wk("2026-07-20", 320, 400)],
+    chronicLoad: ZERO_LOAD, nextWeekPlanned: 430, nextWeekStart: "2026-08-03",
+  });
+  check("breaching the ramp pulls the recovery week forward",
+    rampBreach.action === "recovery_week", rampBreach.action);
+  check("the recovery week sits well below the last week's load",
+    rampBreach.targetLoad <= 400 * RECOVERY_WEEK_FACTOR + 1, String(rampBreach.targetLoad));
+
+  const noHistory = planNextWeek({
+    history: [], chronicLoad: ZERO_LOAD, nextWeekPlanned: 300, nextWeekStart: "2026-08-03",
+  });
+  check("with no history the plan is left alone", noHistory.action === "hold");
+  check("no history means no invented constraints", noHistory.constraints.length === 0);
+
+  console.log("\nAnchors protect the week's key sessions:");
+  const anchorInput = [
+    { id: "a", discipline: "Run", tss: 90 },
+    { id: "b", discipline: "Run", tss: 40 },
+    { id: "c", discipline: "Bike", tss: 80 },
+    { id: "d", discipline: "Swim", tss: 30 },
+    { id: "e", discipline: "Rest", tss: 0 },
+  ];
+  const anchors = selectAnchors(anchorInput);
+  check("at most three sessions are anchored", anchors.length <= 3, String(anchors.length));
+  check("the hardest run is chosen over the easy one",
+    anchors.includes("a") && !anchors.includes("b"));
+  check("rest days are never anchored", !anchors.includes("e"));
+  check("anchoring is deterministic",
+    JSON.stringify(anchors) === JSON.stringify(selectAnchors(anchorInput)));
+
+  // ======================================================================
   console.log("\nEnd to end, on a throwaway account:");
 
   const email = `adapt-${Date.now()}@test.local`;
@@ -522,6 +591,31 @@ async function main() {
       const tue = pairs.find((p) => p.date === "2026-07-28");
       check("a missed day shows planned load with nothing done",
         !!tue && tue.plannedLoad.length > 0 && tue.actualLoad.length === 0);
+
+      // Training on a day with nothing planned must still appear in the plan.
+      await prisma.stravaActivity.create({
+        data: { userId: recUser.id, stravaId: `r3-${Date.now()}`, name: "Surprise Run",
+          sportType: "Run", discipline: "Run",
+          startDate: new Date("2026-07-30T07:00:00"), movingTime: 2400,
+          distance: 7000, estimatedTss: 35, isTrainer: false, detailsFetched: false },
+      });
+      const withUnplanned = await reconcilePlanWithActivities(recUser.id, {
+        now: new Date("2026-07-31T09:00:00"),
+      });
+      check("training with nothing planned is recorded as unplanned",
+        withUnplanned.unplanned >= 1, JSON.stringify(withUnplanned));
+      const unplannedRows = await prisma.plannedSession.findMany({
+        where: { planId: recPlan.id, status: "unplanned" },
+      });
+      check("an unplanned session appears in the plan", unplannedRows.length === 1);
+      check("it carries the load actually done, not prescribed load",
+        unplannedRows[0]?.tss === 0 && unplannedRows[0]?.actualTss === 35,
+        `tss ${unplannedRows[0]?.tss} actual ${unplannedRows[0]?.actualTss}`);
+      await reconcilePlanWithActivities(recUser.id, { now: new Date("2026-07-31T09:00:00") });
+      const afterTwice = await prisma.plannedSession.count({
+        where: { planId: recPlan.id, status: "unplanned" },
+      });
+      check("re-running does not duplicate or reclassify it", afterTwice === 1, String(afterTwice));
 
       const manual = await prisma.plannedSession.create({
         data: {

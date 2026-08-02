@@ -288,11 +288,16 @@ model PlannedSession {
   // Set when the engine has moved or reshaped this session.
   adaptedAt    DateTime?
 
+  /// Links a row created from an unplanned activity back to its Strava
+  /// activity, so reconciliation stays idempotent.
+  sourceActivityId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([planId, week])
   @@index([planId, scheduledDate])
+  @@unique([planId, sourceActivityId])
 }
 
 /// An immutable snapshot of a plan at a point in time (spec Part 2.4).

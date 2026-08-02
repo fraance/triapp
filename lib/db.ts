@@ -377,7 +377,12 @@ export async function getTodayView(
   // athlete did train, just not the prescribed discipline, and ignoring that
   // understated the week and left the plan looking untouched.
   const weekTssCompleted = weekSessions
-    .filter((s) => s.status === "completed" || s.status === "substituted")
+    .filter(
+      (s) =>
+        s.status === "completed" ||
+        s.status === "substituted" ||
+        s.status === "unplanned"
+    )
     .reduce((sum, s) => sum + (s.actualTss ?? s.tss ?? 0), 0);
 
   const weekMeta = weekSessions[0];

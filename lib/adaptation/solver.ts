@@ -154,6 +154,19 @@ export function hardViolations(
         }
       }
     }
+
+    // An absolute ceiling over a window (the macro planner's weekly target).
+    // Checked across all sessions in the range, not session by session.
+    if (c.kind === "cap_load" && c.limit !== undefined) {
+      const inRange = candidate.filter((s) => !s.dropped && withinRange(s.date, c));
+      const total = inRange.reduce((n, s) => n + totalLoad(s.load), 0);
+      if (total > c.limit + 0.5) {
+        out.push(
+          `${c.fromDate}–${c.toDate} totals ${Math.round(total)} load, above the ` +
+            `${c.limit} ceiling set by ${c.source}`
+        );
+      }
+    }
   }
 
   // Days the athlete simply cannot train.

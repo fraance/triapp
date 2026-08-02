@@ -28,6 +28,7 @@ import {
 } from "./load-vector";
 import { executionDriftEngine, fatiguePressure, CompletedSession } from "./signals";
 import { dailyPlannedVsActual, reconcilePlanWithActivities } from "./reconcile";
+import { planNextWeek, selectAnchors, MacroState, WeekSummary } from "./macro-planner";
 import { solve } from "./solver";
 import { GuardrailContext } from "./guardrails";
 import { narrate } from "./narrator";
@@ -111,6 +112,11 @@ export async function adaptPlanForUser(
   });
 
   // ---- Sense ------------------------------------------------------------
+  // Make sure each upcoming week has key sessions the solver may not sacrifice
+  // (v3 Part 3.2). Without this nothing is protected and the engine is free to
+  // dismantle the week's most important workouts.
+  if (!opts.dryRun) await ensureAnchors(plan.id, now);
+
   const horizonEnd = iso(addDays(startOfDay(now), HORIZON_DAYS));
 
   const rows = await prisma.plannedSession.findMany({
@@ -214,7 +220,12 @@ export async function adaptPlanForUser(
   // ---- Interpret --------------------------------------------------------
   const drift = executionDriftEngine(completed, today);
 
-  const constraints: Constraint[] = [...drift.constraints];
+  // Weekly intent (v3 Part 3). The drift engine only spans 48 hours, so
+  // without this a week that runs hot is damped for two days and then carries
+  // on unchanged. Load debt is never repaid — see macro-planner.ts.
+  const macro = await planWeeklyIntent(userId, plan.id, now, chronicLoad);
+
+  const constraints: Constraint[] = [...drift.constraints, ...macro.constraints];
   const preferences: Preference[] = [
     ...drift.preferences,
     {
@@ -269,6 +280,11 @@ export async function adaptPlanForUser(
 
   const diff = diffPlans(sessions, result.sessions);
 
+  const inputHash = createHash("sha256")
+    .update(JSON.stringify({ today, sessions, constraints: clamped }))
+    .digest("hex")
+    .slice(0, 16);
+
   // If the plan still breaks a hard rule and the solver could not repair it,
   // say so. Reporting "no change" here would hide a real problem behind a
   // reassuring message.
@@ -277,11 +293,11 @@ export async function adaptPlanForUser(
       userId,
       planId: plan.id,
       trigger,
-      cause: { constraints: clamped, facts: drift.facts },
+      cause: { constraints: clamped, facts: { ...drift.facts, macro: macro.facts, macroAction: macro.action } },
       diff,
       scoreBefore: before.score,
       scoreAfter: result.score,
-      inputHash: "",
+      inputHash,
       explanation:
         "Your plan needs to change but no safe version could be found within " +
         "the locked days: " + result.violations.slice(0, 3).join("; "),
@@ -312,17 +328,12 @@ export async function adaptPlanForUser(
   const currentIsLegal = before.legal;
   const materiallyBetter = result.score > before.score * HYSTERESIS_FACTOR;
 
-  const inputHash = createHash("sha256")
-    .update(JSON.stringify({ today, sessions, constraints }))
-    .digest("hex")
-    .slice(0, 16);
-
   if (currentIsLegal && !materiallyBetter) {
     await recordAdaptation({
       userId,
       planId: plan.id,
       trigger,
-      cause: { constraints: clamped, facts: drift.facts },
+      cause: { constraints: clamped, facts: { ...drift.facts, macro: macro.facts, macroAction: macro.action } },
       diff,
       scoreBefore: before.score,
       scoreAfter: result.score,
@@ -346,7 +357,7 @@ export async function adaptPlanForUser(
     trigger,
     constraints: clamped,
     diff,
-    facts: drift.facts,
+    facts: { ...drift.facts, weeklyIntent: macro.reason },
   });
 
   if (opts.dryRun) {
@@ -388,7 +399,7 @@ export async function adaptPlanForUser(
     planId: plan.id,
     versionId: version.id,
     trigger,
-    cause: { constraints: clamped, facts: drift.facts },
+    cause: { constraints: clamped, facts: { ...drift.facts, macro: macro.facts, macroAction: macro.action } },
     diff,
     scoreBefore: before.score,
     scoreAfter: result.score,
@@ -407,6 +418,112 @@ export async function adaptPlanForUser(
     scoreAfter: result.score,
     adaptationId: adaptation.id,
   };
+}
+
+/**
+ * Marks 2–3 anchor sessions per upcoming week, if none are set yet.
+ * Idempotent, and never demotes an anchor the engine already chose.
+ */
+export async function ensureAnchors(planId: string, now: Date): Promise<number> {
+  const from = startOfDay(now);
+  const to = addDays(from, 21);
+  const rows = await prisma.plannedSession.findMany({
+    where: { planId, scheduledDate: { gte: from, lte: to }, status: "planned" },
+    select: { id: true, week: true, discipline: true, tss: true, isAnchor: true },
+  });
+
+  const byWeek = new Map<number, typeof rows>();
+  for (const r of rows) byWeek.set(r.week, [...(byWeek.get(r.week) ?? []), r]);
+
+  let marked = 0;
+  for (const [, weekRows] of byWeek) {
+    if (weekRows.some((r) => r.isAnchor)) continue; // already decided
+    const ids = selectAnchors(weekRows);
+    if (ids.length === 0) continue;
+    await prisma.plannedSession.updateMany({
+      where: { id: { in: ids } },
+      data: { isAnchor: true },
+    });
+    marked += ids.length;
+  }
+  return marked;
+}
+
+// ---- Weekly intent --------------------------------------------------------
+
+/**
+ * Builds the macro planner's view: what each recent week planned vs achieved,
+ * and what the coming week currently asks for.
+ */
+async function planWeeklyIntent(
+  userId: string,
+  planId: string,
+  now: Date,
+  chronicLoad: LoadVector
+) {
+  const monday = mondayOf(startOfDay(now));
+  const historyStart = addDays(monday, -28);
+
+  const sessions = await prisma.plannedSession.findMany({
+    where: { planId, scheduledDate: { gte: historyStart, lt: addDays(monday, 14) } },
+    select: { scheduledDate: true, discipline: true, type: true, tss: true, status: true },
+  });
+
+  const activities = await prisma.stravaActivity.findMany({
+    where: { userId, startDate: { gte: historyStart, lt: monday } },
+    select: { startDate: true, discipline: true, name: true, estimatedTss: true },
+  });
+
+  const history: WeekSummary[] = [];
+  for (let i = 4; i >= 1; i--) {
+    const wkStart = addDays(monday, -7 * i);
+    const wkEnd = addDays(wkStart, 7);
+    const planned = sessions
+      .filter((s) => s.scheduledDate && s.scheduledDate >= wkStart && s.scheduledDate < wkEnd)
+      .reduce(
+        (n, s) =>
+          n + totalLoad(loadVectorFor({ discipline: s.discipline, tss: s.tss, type: s.type })),
+        0
+      );
+    const actual = activities
+      .filter((a) => a.startDate >= wkStart && a.startDate < wkEnd)
+      .reduce(
+        (n, a) =>
+          n +
+          totalLoad(
+            loadVectorFor({ discipline: a.discipline, tss: a.estimatedTss, type: a.name })
+          ),
+        0
+      );
+    if (planned > 0 || actual > 0) {
+      history.push({ weekStart: iso(wkStart), plannedLoad: planned, actualLoad: actual });
+    }
+  }
+
+  const nextStart = addDays(monday, 7);
+  const nextEnd = addDays(nextStart, 7);
+  const nextWeekPlanned = sessions
+    .filter((s) => s.scheduledDate && s.scheduledDate >= nextStart && s.scheduledDate < nextEnd)
+    .reduce(
+      (n, s) =>
+        n + totalLoad(loadVectorFor({ discipline: s.discipline, tss: s.tss, type: s.type })),
+      0
+    );
+
+  const state: MacroState = {
+    history,
+    chronicLoad,
+    nextWeekPlanned,
+    nextWeekStart: iso(nextStart),
+  };
+
+  return planNextWeek(state);
+}
+
+function mondayOf(d: Date): Date {
+  const x = startOfDay(d);
+  const back = (x.getDay() + 6) % 7; // Monday = 0
+  return addDays(x, -back);
 }
 
 // ---- helpers --------------------------------------------------------------

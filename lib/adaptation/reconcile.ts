@@ -20,7 +20,8 @@ import { localISO, loadVectorFor, normaliseDiscipline } from "./load-vector";
 export type SessionOutcome =
   | "completed" // did what was planned, in the right discipline
   | "substituted" // trained that day, but not the planned discipline
-  | "missed"; // the day passed with no training at all
+  | "missed" // the day passed with no training at all
+  | "unplanned"; // trained with nothing on the plan for that day
 
 export interface ReconcileResult {
   examined: number;
@@ -109,6 +110,9 @@ export async function reconcilePlanWithActivities(
     if (!s.scheduledDate) continue;
     // Never overwrite a judgement the athlete made themselves.
     if (s.status === "skipped") continue;
+    // Rows we created FROM an activity are a record of what happened, not a
+    // plan to be judged. Re-examining them reclassified them on the next pass.
+    if (s.sourceActivityId) continue;
 
     result.examined++;
     const day = localISO(s.scheduledDate);
@@ -174,11 +178,87 @@ export async function reconcilePlanWithActivities(
     }
   }
 
-  result.unplanned = activities.filter(
+  // ---- Unplanned training ------------------------------------------------
+  // Activities that matched no planned session are real work and must appear
+  // in the plan. Otherwise the log shows a rest day where the athlete actually
+  // trained, and the week reads as lighter than it was.
+  const leftover = activities.filter(
     (a) => !consumed.has(a.id) && localISO(a.startDate) < localISO(today)
-  ).length;
+  );
+  result.unplanned = leftover.length;
+
+  if (!opts.dryRun) {
+    for (const a of leftover) {
+      const date = localISO(a.startDate);
+      await prisma.plannedSession
+        .upsert({
+          // Unique on (planId, sourceActivityId), so re-running is a no-op.
+          where: {
+            planId_sourceActivityId: { planId: plan.id, sourceActivityId: a.id },
+          },
+          create: {
+            planId: plan.id,
+            week: weekNumberOf(a.startDate, sessions),
+            day: WEEKDAYS[a.startDate.getDay()],
+            scheduledDate: new Date(date + "T00:00:00"),
+            discipline: a.discipline,
+            type: "Unplanned",
+            duration: `${Math.round(a.movingTime / 60)} min`,
+            tss: 0, // never counted as prescribed load
+            actualTss: a.estimatedTss,
+            status: "unplanned",
+            purpose: "Unplanned training",
+            completedAt: a.startDate,
+            sourceActivityId: a.id,
+          },
+          update: { actualTss: a.estimatedTss },
+        })
+        .catch(() => {
+          /* a concurrent run already created it */
+        });
+    }
+  }
+
+  for (const a of leftover) {
+    result.changes.push({
+      date: localISO(a.startDate),
+      planned: "nothing planned",
+      plannedTss: 0,
+      outcome: "unplanned" as SessionOutcome,
+      actual: `${a.discipline} ${a.estimatedTss} TSS`,
+      actualTss: a.estimatedTss,
+    });
+  }
 
   return result;
+}
+
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/** Best-effort plan week for an unplanned activity, from neighbouring rows. */
+function weekNumberOf(
+  date: Date,
+  sessions: Array<{ scheduledDate: Date | null; week: number }>
+): number {
+  let best = 1;
+  let bestGap = Infinity;
+  for (const s of sessions) {
+    if (!s.scheduledDate) continue;
+    const gap = Math.abs(s.scheduledDate.getTime() - date.getTime());
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = s.week;
+    }
+  }
+  return best;
 }
 
 /**
