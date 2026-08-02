@@ -74,6 +74,7 @@ export async function reconcilePlanWithActivities(
     substituted: 0,
     missed: 0,
     unplanned: 0,
+    swaps: [],
     changes: [],
   };
 

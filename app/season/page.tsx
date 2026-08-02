@@ -8,6 +8,7 @@ import PlanCalendar, {
   CalendarWeek,
 } from "@/components/PlanCalendar";
 import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
+import { warningsFor } from "@/lib/plan-warnings";
 import {
   DraftState,
   emptyDraft,
@@ -70,9 +71,6 @@ export default function PlanPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [warnings, setWarnings] = useState<{ rule: string; detail: string }[]>(
-    []
-  );
   const [draft, setDraft] = useState<DraftState>(emptyDraft({}));
 
   const load = useCallback(async () => {
@@ -146,14 +144,35 @@ export default function PlanPage() {
     return out;
   }, [season, draft, weekOf]);
 
-  /** Days named in a guardrail warning, so the calendar can mark them. */
-  const warningDates = useMemo(() => {
-    const out = new Set<string>();
-    for (const w of warnings) {
-      for (const m of w.detail.matchAll(/\d{4}-\d{2}-\d{2}/g)) out.add(m[0]);
-    }
-    return out;
-  }, [warnings]);
+  /**
+   * Guardrail warnings for the layout as it stands right now, recomputed on
+   * every drop rather than waiting for Save. Being told after committing that
+   * an arrangement was risky is feedback arriving too late to act on.
+   *
+   * This is the same pure function the server runs at save time, so the live
+   * warning and the authoritative one cannot disagree.
+   */
+  const warnings = useMemo(
+    () =>
+      warningsFor(
+        sessions.map((s) => ({
+          id: s.id,
+          date: s.date,
+          discipline: s.discipline,
+          type: s.type,
+          tss: s.tss,
+          isAnchor: s.isAnchor,
+          status: s.status,
+        }))
+      ),
+    [sessions]
+  );
+
+  /** Days named in a warning, so the calendar can mark them. */
+  const warningDates = useMemo(
+    () => new Set(warnings.flatMap((w) => w.dates)),
+    [warnings]
+  );
 
   const dirty = isDirty(draft);
 
@@ -180,7 +199,6 @@ export default function PlanPage() {
   function handleMove(sessionId: string, toDate: string) {
     const s = sessions.find((x) => x.id === sessionId);
     if (!s) return;
-    setWarnings([]);
     setMessage("");
     setDraft((d) =>
       pushStep(d, {
@@ -219,7 +237,6 @@ export default function PlanPage() {
         return false;
       }
 
-      setWarnings(data.warnings ?? []);
       setMessage(
         data.moved === 1
           ? "Saved. 1 session moved."
@@ -279,6 +296,14 @@ export default function PlanPage() {
             <span className="text-sm text-indigo-900 font-medium">
               {netMoves(draft).length} unsaved
             </span>
+            {warnings.length > 0 && (
+              <span
+                title={warnings.map((w) => w.detail).join("\n")}
+                className="text-sm text-amber-700 font-medium"
+              >
+                ⚠ {warnings.length}
+              </span>
+            )}
             <button
               onClick={() => setDraft(undo)}
               disabled={!canUndo(draft) || saving}
@@ -355,13 +380,18 @@ export default function PlanPage() {
             {warnings.length > 0 && (
               <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded mb-4">
                 <p className="font-semibold mb-1">
-                  Saved, but worth knowing:
+                  {dirty
+                    ? "Worth knowing before you save:"
+                    : "Worth knowing about this week:"}
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-sm">
                   {warnings.map((w, i) => (
                     <li key={i}>{w.detail}</li>
                   ))}
                 </ul>
+                <p className="text-xs mt-2 text-amber-800">
+                  You can still save this — it&apos;s your call.
+                </p>
               </div>
             )}
 

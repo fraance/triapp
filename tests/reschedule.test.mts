@@ -167,6 +167,11 @@ async function main() {
       "the warning says something the athlete can act on",
       stacked.every((w) => w.detail.length > 10)
     );
+    check(
+      "and names the day, so the calendar can mark it",
+      stacked.some((w) => w.dates.includes("2026-08-05")),
+      JSON.stringify(stacked.map((w) => w.dates))
+    );
 
     const completedStack = warningsFor([
       {

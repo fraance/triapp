@@ -33,28 +33,17 @@ import {
   startOfDay,
   weekNumberFor,
 } from "./plan-dates";
-import { checkGuardrails, GuardrailViolation } from "./adaptation/guardrails";
-import { loadVectorFor } from "./adaptation/load-vector";
-import { SolverSession, ZERO_LOAD } from "./adaptation/types";
+import {
+  warningsFor,
+  MOVABLE_STATUSES,
+  RescheduleWarning,
+} from "./plan-warnings";
+
+export type { RescheduleWarning } from "./plan-warnings";
+export { warningsFor } from "./plan-warnings";
 
 /** Local hour after which tomorrow is committed too. Mirrors engine.ts. */
 const FREEZE_HOUR = 20;
-
-/** Statuses that represent a plan, rather than a record of what happened. */
-const MOVABLE_STATUSES = ["planned", "adapted"];
-
-/**
- * Guardrails that are about *where a session sits*, which is the only thing a
- * drag can change. The ramp and ACWR rules are deliberately excluded: they
- * depend on completed training history, they are the adaptation engine's job,
- * and firing them here would mean warning the athlete about something their
- * drag did not cause.
- */
-const PLACEMENT_RULES = [
-  "same_day_separation",
-  "key_session_separation",
-  "run_before_bike",
-];
 
 export interface SessionMove {
   sessionId: string;
@@ -65,11 +54,6 @@ export interface SessionMove {
 export interface MoveRejection {
   sessionId: string;
   reason: string;
-}
-
-export interface RescheduleWarning {
-  rule: string;
-  detail: string;
 }
 
 export interface RescheduleResult {
@@ -152,56 +136,6 @@ export function nominalDate(
   const offset = dayNameToIndex(day);
   if (offset > 0) d.setDate(d.getDate() + offset);
   return d;
-}
-
-// ---- Guardrail warnings -------------------------------------------------
-
-interface WarnableSession {
-  id: string;
-  date: string;
-  discipline: string;
-  type: string;
-  tss: number;
-  isAnchor: boolean;
-  status: string;
-}
-
-/**
- * What the athlete should know about an arrangement, without stopping them.
- *
- * Pure: no database, no clock. Given the same sessions it always returns the
- * same warnings, which is what makes it testable.
- */
-export function warningsFor(sessions: WarnableSession[]): RescheduleWarning[] {
-  const solverSessions: SolverSession[] = sessions
-    .filter((s) => MOVABLE_STATUSES.includes(s.status))
-    .map((s) => ({
-      id: s.id,
-      date: s.date,
-      discipline: s.discipline,
-      type: s.type,
-      durationMinutes: 0,
-      tss: s.tss,
-      load: loadVectorFor({
-        discipline: s.discipline,
-        tss: s.tss,
-        type: s.type,
-      }),
-      purpose: s.type,
-      isAnchor: s.isAnchor,
-      status: s.status,
-    }));
-
-  const violations: GuardrailViolation[] = checkGuardrails(solverSessions, {
-    // The placement rules we keep don't read either of these; passing zero
-    // keeps this function pure rather than dragging in training history.
-    chronicLoad: ZERO_LOAD,
-    previousWeekLoad: ZERO_LOAD,
-  });
-
-  return violations
-    .filter((v) => PLACEMENT_RULES.includes(v.rule))
-    .map((v) => ({ rule: v.rule, detail: v.detail }));
 }
 
 // ---- Applying a batch ---------------------------------------------------
