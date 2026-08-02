@@ -120,6 +120,11 @@ export interface SolverSession {
   /** Anchor sessions must survive every adaptation (spec 3.2). */
   isAnchor: boolean;
   status: string;
+  /**
+   * Long sessions (v3 §4.3, "the Job problem") are pinned to the days real
+   * life allows. They are never moved and never shifted onto a weekday.
+   */
+  isLong?: boolean;
   /** Set by the solver when it changes something. */
   movedFrom?: string;
   scaledBy?: number;
@@ -139,6 +144,11 @@ export interface SolverInput {
   unavailableDates?: string[];
   /** Sessions on/before this date are frozen (commitment window). */
   frozenUntil?: string;
+  /**
+   * Days the athlete can accommodate a long session. Long sessions may only
+   * ever sit on these days (v3 §4.3). Empty means "weekends only".
+   */
+  longSessionDates?: string[];
 }
 
 export interface SolverResult {

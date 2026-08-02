@@ -1,17 +1,43 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
+import PlanCalendar, {
+  CalendarSession,
+  CalendarWeek,
+} from "@/components/PlanCalendar";
+import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
+import {
+  DraftState,
+  emptyDraft,
+  pushStep,
+  positions,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
+  netMoves,
+  isDirty,
+  discardAll,
+  resetWeekStep,
+  weekIsDirty,
+} from "@/lib/plan-draft";
 
-interface Session {
+interface SeasonSession {
+  id: string;
   day: string;
+  date: string;
   discipline: string;
   type: string;
   duration: string;
   tss: number;
   instructions: string;
   pace: string;
+  status: string;
+  isAnchor: boolean;
 }
 
 interface SeasonWeek {
@@ -24,7 +50,7 @@ interface SeasonWeek {
   hasDetail: boolean;
   startDate: string | null;
   isCurrentWeek: boolean;
-  sessions: Session[];
+  sessions: SeasonSession[];
 }
 
 interface Season {
@@ -33,39 +59,181 @@ interface Season {
   detailedWeeks: number;
   raceDate: string | null;
   currentWeek: number | null;
+  frozenUntil: string;
   weeks: SeasonWeek[];
 }
 
-const phaseColor: Record<string, string> = {
-  Base: "bg-blue-100 text-blue-800",
-  Build: "bg-orange-100 text-orange-800",
-  Peak: "bg-red-100 text-red-800",
-  Taper: "bg-purple-100 text-purple-800",
-  Race: "bg-green-100 text-green-800",
-  Recovery: "bg-gray-100 text-gray-700",
-};
-
-export default function SeasonPage() {
+export default function PlanPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [season, setSeason] = useState<Season | null>(null);
   const [loading, setLoading] = useState(true);
-  const [openWeek, setOpenWeek] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [warnings, setWarnings] = useState<{ rule: string; detail: string }[]>(
+    []
+  );
+  const [draft, setDraft] = useState<DraftState>(emptyDraft({}));
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const data = await fetch(`/api/plans/season?userId=${user.id}`).then((r) =>
-        r.json()
-      );
+      const data: Season = await fetch(
+        `/api/plans/season?userId=${user.id}`
+      ).then((r) => r.json());
       setSeason(data);
-      if (data.currentWeek) setOpenWeek(data.currentWeek);
+      // Reloading establishes a new baseline: whatever the server now says is
+      // the truth, and any draft on top of it is stale.
+      const baseline: Record<string, string> = {};
+      for (const w of data.weeks ?? []) {
+        for (const s of w.sessions) baseline[s.id] = s.date;
+      }
+      setDraft(emptyDraft(baseline));
     } finally {
       setLoading(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    load();
+  }, [user, authLoading, load]);
+
+  // ---- Draft-aware derived data ----------------------------------------
+
+  /** Every session, moved to wherever the draft currently puts it. */
+  const sessions: CalendarSession[] = useMemo(() => {
+    if (!season) return [];
+    const at = positions(draft);
+    return season.weeks
+      .flatMap((w) => w.sessions)
+      .map((s) => ({
+        id: s.id,
+        discipline: s.discipline,
+        type: s.type,
+        duration: s.duration,
+        tss: s.tss,
+        status: s.status,
+        isAnchor: s.isAnchor,
+        date: at[s.id] ?? s.date,
+      }));
+  }, [season, draft]);
+
+  /**
+   * Which plan week a calendar day falls in. Derived from week 1's Monday so
+   * it matches the server's arithmetic rather than guessing from the UI.
+   */
+  const weekOf = useCallback(
+    (date: string): number => {
+      const first = season?.weeks[0]?.startDate;
+      if (!first) return 0;
+      const [ay, am, ad] = first.split("-").map(Number);
+      const [by, bm, bd] = date.split("-").map(Number);
+      const days = Math.round(
+        (Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000
+      );
+      return Math.floor(days / 7) + (season?.weeks[0]?.week ?? 1);
+    },
+    [season]
+  );
+
+  const dirtyWeeks = useMemo(() => {
+    const out = new Set<number>();
+    for (const w of season?.weeks ?? []) {
+      if (weekIsDirty(draft, w.week, weekOf)) out.add(w.week);
+    }
+    return out;
+  }, [season, draft, weekOf]);
+
+  /** Days named in a guardrail warning, so the calendar can mark them. */
+  const warningDates = useMemo(() => {
+    const out = new Set<string>();
+    for (const w of warnings) {
+      for (const m of w.detail.matchAll(/\d{4}-\d{2}-\d{2}/g)) out.add(m[0]);
+    }
+    return out;
+  }, [warnings]);
+
+  const dirty = isDirty(draft);
+
+  const calendarWeeks: CalendarWeek[] = useMemo(
+    () =>
+      (season?.weeks ?? [])
+        .filter((w): w is SeasonWeek & { startDate: string } => !!w.startDate)
+        .map((w) => ({
+          week: w.week,
+          phase: w.phase,
+          focus: w.focus,
+          targetHours: w.targetHours,
+          targetTss: w.targetTss,
+          isRaceWeek: w.isRaceWeek,
+          hasDetail: w.hasDetail,
+          isCurrentWeek: w.isCurrentWeek,
+          startDate: w.startDate,
+        })),
+    [season]
+  );
+
+  // ---- Actions ----------------------------------------------------------
+
+  function handleMove(sessionId: string, toDate: string) {
+    const s = sessions.find((x) => x.id === sessionId);
+    if (!s) return;
+    setWarnings([]);
+    setMessage("");
+    setDraft((d) =>
+      pushStep(d, {
+        label: `Moved ${s.discipline} to ${toDate}`,
+        moves: [{ sessionId, from: s.date, to: toDate }],
+      })
+    );
+  }
+
+  function handleResetWeek(week: number) {
+    setDraft((d) => pushStep(d, resetWeekStep(d, week, weekOf)));
+  }
+
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!user) return false;
+    const moves = netMoves(draft);
+    if (moves.length === 0) return true;
+
+    setSaving(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/plans/reschedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, moves }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        // 409 means the plan itself disagrees — show why, and keep the draft
+        // so the athlete can fix it rather than losing their work.
+        const reasons = (data.rejected ?? [])
+          .map((r: any) => r.reason)
+          .join(" ");
+        setMessage(reasons || data.error || "Couldn't save your changes.");
+        return false;
+      }
+
+      setWarnings(data.warnings ?? []);
+      setMessage(
+        data.moved === 1
+          ? "Saved. 1 session moved."
+          : `Saved. ${data.moved} sessions moved.`
+      );
+      await load();
+      return true;
+    } catch (e: any) {
+      setMessage(e.message || "Couldn't save your changes.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [user, draft, load]);
 
   async function expand(body: any, label: string) {
     if (!user) return;
@@ -92,22 +260,62 @@ export default function SeasonPage() {
     }
   }
 
-  useEffect(() => {
-    if (authLoading || !user) return;
-    load();
-  }, [user, authLoading, load]);
+  // ---- Render -----------------------------------------------------------
 
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">Loading your season...</p>
+        <p className="text-gray-600">Loading your plan...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 pb-10">
+      {/* Editing toolbar. Only appears once there is something to lose. */}
+      {dirty && (
+        <div className="sticky top-0 z-30 bg-white border-b border-indigo-200 shadow-sm">
+          <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-2">
+            <span className="text-sm text-indigo-900 font-medium">
+              {netMoves(draft).length} unsaved
+            </span>
+            <button
+              onClick={() => setDraft(undo)}
+              disabled={!canUndo(draft) || saving}
+              title={undoLabel(draft) ?? "Nothing to undo"}
+              aria-label="Undo"
+              className="px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-40"
+            >
+              ↶
+            </button>
+            <button
+              onClick={() => setDraft(redo)}
+              disabled={!canRedo(draft) || saving}
+              title={redoLabel(draft) ?? "Nothing to redo"}
+              aria-label="Redo"
+              className="px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-40"
+            >
+              ↷
+            </button>
+            <button
+              onClick={() => setDraft(discardAll)}
+              disabled={saving}
+              className="ml-auto text-sm text-gray-600 px-2 py-1.5"
+            >
+              Discard
+            </button>
+            <button
+              onClick={save}
+              disabled={saving}
+              className="bg-indigo-600 text-white px-5 py-1.5 rounded-md font-semibold disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-indigo-900">Season plan</h1>
           {season?.hasPlan && (
@@ -115,6 +323,11 @@ export default function SeasonPage() {
               {season.totalWeeks} weeks to race day
               {season.raceDate ? ` (${season.raceDate})` : ""} ·{" "}
               {season.detailedWeeks} weeks detailed
+            </p>
+          )}
+          {season?.hasPlan && (
+            <p className="text-sm text-gray-500 mt-1">
+              Press and hold a session to move it to another day.
             </p>
           )}
         </div>
@@ -136,6 +349,19 @@ export default function SeasonPage() {
             {message && (
               <div className="bg-blue-100 text-blue-900 px-4 py-3 rounded mb-4">
                 {message}
+              </div>
+            )}
+
+            {warnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded mb-4">
+                <p className="font-semibold mb-1">
+                  Saved, but worth knowing:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-sm">
+                  {warnings.map((w, i) => (
+                    <li key={i}>{w.detail}</li>
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -177,113 +403,29 @@ export default function SeasonPage() {
               </div>
             )}
 
-            <div className="space-y-3">
-            {season.weeks.map((w) => (
-              <div
-                key={w.week}
-                className={`bg-white rounded-lg shadow ${
-                  w.isCurrentWeek ? "ring-2 ring-indigo-500" : ""
-                }`}
-              >
-                <button
-                  onClick={() => setOpenWeek(openWeek === w.week ? null : w.week)}
-                  className="w-full text-left p-4 flex justify-between items-center gap-4"
-                >
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-bold text-indigo-900">
-                      Week {w.week}
-                    </span>
-                    <span
-                      className={`px-2 py-1 rounded text-sm font-semibold ${
-                        phaseColor[w.phase] || "bg-gray-100 text-gray-700"
-                      }`}
-                    >
-                      {w.phase}
-                    </span>
-                    {w.isCurrentWeek && (
-                      <span className="px-2 py-1 rounded text-sm bg-indigo-600 text-white">
-                        This week
-                      </span>
-                    )}
-                    {w.isRaceWeek && <span className="text-sm">🏁 Race week</span>}
-                    <span className="text-sm text-gray-500">{w.startDate}</span>
-                  </div>
-                  <div className="text-right text-sm text-gray-600 whitespace-nowrap">
-                    {w.targetHours ? <div>{w.targetHours} h</div> : null}
-                    {w.targetTss ? <div>{w.targetTss} TSS</div> : null}
-                    {!w.hasDetail && (
-                      <div className="text-gray-400">outline only</div>
-                    )}
-                  </div>
-                </button>
-
-                {openWeek === w.week && (
-                  <div className="px-4 pb-4">
-                    {w.focus && (
-                      <p className="text-gray-700 mb-3">
-                        <strong>Focus:</strong> {w.focus}
-                      </p>
-                    )}
-
-                    {w.hasDetail ? (
-                      <div className="space-y-2">
-                        {w.sessions.map((s, i) => (
-                          <div
-                            key={i}
-                            className="border border-gray-200 rounded p-3"
-                          >
-                            <div className="flex justify-between">
-                              <p className="font-semibold text-gray-800">
-                                {s.day} — {s.discipline}{" "}
-                                <span className="text-indigo-600">{s.type}</span>
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                {s.duration} · TSS {s.tss}
-                              </p>
-                            </div>
-                            {s.instructions && (
-                              <p className="text-sm text-gray-700 mt-1">
-                                {s.instructions}
-                              </p>
-                            )}
-                            {s.pace && (
-                              <p className="text-sm text-gray-500 mt-1">
-                                Pace: {s.pace}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-gray-500 text-sm mb-3">
-                          This week is planned at a high level only. Generate the
-                          day-by-day sessions whenever you want them.
-                        </p>
-                        <button
-                          onClick={() =>
-                            expand(
-                              { fromWeek: w.week, toWeek: w.week },
-                              `week-${w.week}`
-                            )
-                          }
-                          disabled={busy !== null}
-                          className="bg-indigo-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
-                        >
-                          {busy === `week-${w.week}`
-                            ? "Generating..."
-                            : `Generate sessions for week ${w.week}`}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            </div>
+            <PlanCalendar
+              weeks={calendarWeeks}
+              sessions={sessions}
+              frozenUntil={season.frozenUntil}
+              dirtyWeeks={dirtyWeeks}
+              warningDates={warningDates}
+              onMove={handleMove}
+              onResetWeek={handleResetWeek}
+              onExpandWeek={(week) =>
+                expand({ fromWeek: week, toWeek: week }, `week-${week}`)
+              }
+              busyWeek={busy}
+            />
           </>
         )}
       </div>
+
+      <UnsavedChangesGuard
+        when={dirty}
+        onSave={save}
+        saving={saving}
+        message="You've moved sessions around but haven't saved them yet."
+      />
     </div>
   );
 }

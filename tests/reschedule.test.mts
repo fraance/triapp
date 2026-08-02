@@ -20,7 +20,12 @@
  * Run with:  npm run test:reschedule
  */
 import "./env.mts";
-import { createUser, saveFullPlan, getSeasonView } from "../lib/db";
+import {
+  createUser,
+  saveFullPlan,
+  getSeasonView,
+  getTodayView,
+} from "../lib/db";
 import {
   applyMoves,
   warningsFor,
@@ -430,6 +435,27 @@ async function main() {
     );
     check("the move is refused", stolen.applied === false);
     await prisma.user.delete({ where: { id: other.id } }).catch(() => {});
+
+    console.log("\nA move is visible on the Today screen:");
+    // The Saturday bike currently sits on 2026-08-08. Move it to the 9th and
+    // check Today on the 9th picks it up. Today reads dates, not week/day, so
+    // this is the test that would catch the two drifting apart.
+    const beforeToday = await getTodayView(userId, new Date(2026, 7, 9));
+    check(
+      "the bike is not on Sunday to begin with",
+      !beforeToday.sessions.some((s) => s.id === bikeSat.id)
+    );
+    await applyMoves(userId, [{ sessionId: bikeSat.id, toDate: "2026-08-09" }], now);
+    const afterToday = await getTodayView(userId, new Date(2026, 7, 9));
+    check(
+      "after moving it, Today shows it",
+      afterToday.sessions.some((s) => s.id === bikeSat.id),
+      afterToday.sessions.map((s) => s.discipline).join(", ") || "nothing"
+    );
+    check(
+      "and it reports the week it actually sits in",
+      afterToday.sessions.find((s) => s.id === bikeSat.id)?.week === 1
+    );
 
     console.log("\nGuardrails warn but never block:");
     // Put the Saturday bike onto the same day as the Friday run: both are key

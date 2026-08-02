@@ -61,7 +61,7 @@ export function scorePlan(
   for (const s of candidate) {
     if (s.dropped) {
       // Losing a session loses its purpose entirely.
-      purpose -= s.isAnchor ? 100 : 20 + totalLoad(s.load) * 0.2;
+      purpose -= s.isAnchor || s.isLong ? 100 : 20 + totalLoad(s.load) * 0.2;
       stability -= 12;
       continue;
     }
@@ -76,7 +76,11 @@ export function scorePlan(
       const days = Math.abs(dayDiff(s.movedFrom, s.date));
       stability -= 6 + days * 3;
     }
-    if (scale !== 1) stability -= Math.abs(1 - scale) * 25;
+    if (scale !== 1) {
+      // Trim weekday volume before touching a long session (v3 §4.3).
+      const cost = s.isLong ? 90 : 25;
+      stability -= Math.abs(1 - scale) * cost;
+    }
   }
 
   // Soft constraints
@@ -226,7 +230,10 @@ function expand(
     }
 
     // 2. Move the session to another day inside the horizon.
-    for (const date of horizonDates) {
+    // Long sessions are never moved (v3 §4.3 and the "long runs are immovable"
+    // hard boundary). Real life decides when a 2-hour session can happen; the
+    // solver trims weekday volume instead of shuffling the weekend.
+    for (const date of s.isLong ? [] : horizonDates) {
       if (date === s.date) continue;
       if (date < input.today) continue;
       if (input.unavailableDates?.includes(date)) continue;
@@ -236,8 +243,8 @@ function expand(
       out.push(next);
     }
 
-    // 3. Drop it — only ever legal for non-anchors.
-    if (!s.isAnchor) {
+    // 3. Drop it — only ever legal for non-anchors, and never a long session.
+    if (!s.isAnchor && !s.isLong) {
       const next = clone(candidate);
       next[i] = { ...s, dropped: true };
       out.push(next);

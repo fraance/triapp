@@ -26,7 +26,12 @@ import {
   sumLoad,
   totalLoad,
 } from "./load-vector";
-import { executionDriftEngine, fatiguePressure, CompletedSession } from "./signals";
+import {
+  executionDriftEngine,
+  crossSportSwapEngine,
+  fatiguePressure,
+  CompletedSession,
+} from "./signals";
 import { dailyPlannedVsActual, reconcilePlanWithActivities } from "./reconcile";
 import { planNextWeek, selectAnchors, MacroState, WeekSummary } from "./macro-planner";
 import { solve } from "./solver";
@@ -42,6 +47,9 @@ const FREEZE_HOUR = 20;
 
 /** How far ahead the solver may reshuffle. */
 const HORIZON_DAYS = 10;
+
+/** A session at or above this length is treated as a long session (v3 §4.3). */
+const LONG_SESSION_MINUTES = 120;
 
 export interface AdaptationOutcome {
   ran: boolean;
@@ -155,6 +163,11 @@ export async function adaptPlanForUser(
       load: loadVectorFor({ discipline: r.discipline, tss: r.tss, type: r.type }),
       purpose: r.purpose ?? r.type,
       isAnchor: r.isAnchor,
+      // v3 §4.3: 2h+ sessions, and anything named "long", are pinned to the
+      // days real life allows and are never shuffled onto a weekday.
+      isLong:
+        parseMinutes(r.duration) >= LONG_SESSION_MINUTES ||
+        /long/i.test(r.type ?? ""),
       status: r.status,
     }));
 
@@ -229,7 +242,14 @@ export async function adaptPlanForUser(
   // on unchanged. Load debt is never repaid — see macro-planner.ts.
   const macro = await planWeeklyIntent(userId, plan.id, now, chronicLoad);
 
-  const constraints: Constraint[] = [...drift.constraints, ...macro.constraints];
+  // Cross-sport swaps load the legs in ways the plan never budgeted for.
+  const swap = crossSportSwapEngine(reconciled.swaps ?? [], today);
+
+  const constraints: Constraint[] = [
+    ...drift.constraints,
+    ...swap.constraints,
+    ...macro.constraints,
+  ];
   const preferences: Preference[] = [
     ...drift.preferences,
     {
@@ -251,9 +271,20 @@ export async function adaptPlanForUser(
   }
 
   // ---- Solve ------------------------------------------------------------
+  // v3 §5 Cold Start Trap: count days we actually hold training data for.
+  // Below 28 days the ACWR denominator is untrustworthy and would zero out the
+  // athlete's week, so a daily ceiling governs instead.
+  const historyDates = new Set(completedLoads.map((c) => c.date));
+  const chronicHistoryDays = historyDates.size;
+
   const guardrails: GuardrailContext = {
     chronicLoad,
     previousWeekLoad,
+    chronicHistoryDays,
+    // Fallback ceiling from what the athlete has actually been doing, not an
+    // invented number: their busiest recent day, with a little headroom.
+    dailyLoadCeiling: dailyCeilingFrom(completedLoads),
+    longSessionDates: longSessionDatesFrom(sessions),
   };
 
   const frozenUntil = freezeBoundary(now);
@@ -297,7 +328,15 @@ export async function adaptPlanForUser(
       userId,
       planId: plan.id,
       trigger,
-      cause: { constraints: clamped, facts: { ...drift.facts, macro: macro.facts, macroAction: macro.action } },
+      cause: {
+        constraints: clamped,
+        facts: {
+          ...drift.facts,
+          swap: swap.facts,
+          macro: macro.facts,
+          macroAction: macro.action,
+        },
+      },
       diff,
       scoreBefore: before.score,
       scoreAfter: result.score,
@@ -337,7 +376,15 @@ export async function adaptPlanForUser(
       userId,
       planId: plan.id,
       trigger,
-      cause: { constraints: clamped, facts: { ...drift.facts, macro: macro.facts, macroAction: macro.action } },
+      cause: {
+        constraints: clamped,
+        facts: {
+          ...drift.facts,
+          swap: swap.facts,
+          macro: macro.facts,
+          macroAction: macro.action,
+        },
+      },
       diff,
       scoreBefore: before.score,
       scoreAfter: result.score,
@@ -403,7 +450,15 @@ export async function adaptPlanForUser(
     planId: plan.id,
     versionId: version.id,
     trigger,
-    cause: { constraints: clamped, facts: { ...drift.facts, macro: macro.facts, macroAction: macro.action } },
+    cause: {
+        constraints: clamped,
+        facts: {
+          ...drift.facts,
+          swap: swap.facts,
+          macro: macro.facts,
+          macroAction: macro.action,
+        },
+      },
     diff,
     scoreBefore: before.score,
     scoreAfter: result.score,
@@ -525,6 +580,32 @@ async function planWeeklyIntent(
   };
 
   return planNextWeek(state);
+}
+
+/**
+ * Days a long session may occupy. Until per-day availability is wired in, this
+ * is where long sessions already sit plus the weekends in the horizon — so the
+ * solver can never quietly relocate a weekend session to a Tuesday morning.
+ */
+function longSessionDatesFrom(sessions: SolverSession[]): string[] {
+  const dates = new Set<string>();
+  for (const s of sessions) {
+    if (s.isLong) dates.add(s.date);
+    const day = new Date(s.date + "T00:00:00").getDay();
+    if (day === 0 || day === 6) dates.add(s.date);
+  }
+  return [...dates].sort();
+}
+
+/** Daily load ceiling used only while chronic history is too short. */
+function dailyCeilingFrom(loads: Array<{ date: string; load: LoadVector }>): number {
+  if (loads.length === 0) return 0;
+  const byDay = new Map<string, number>();
+  for (const l of loads) {
+    byDay.set(l.date, (byDay.get(l.date) ?? 0) + totalLoad(l.load));
+  }
+  const busiest = Math.max(...byDay.values());
+  return Math.round(busiest * 1.1);
 }
 
 function mondayOf(d: Date): Date {

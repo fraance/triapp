@@ -49,6 +49,8 @@ import {
 import { describeChanges } from "../lib/adaptation/narrator";
 import { reconcilePlanWithActivities, dailyPlannedVsActual } from "../lib/adaptation/reconcile";
 import { planNextWeek, selectAnchors, RECOVERY_WEEK_FACTOR } from "../lib/adaptation/macro-planner";
+import { crossSportSwapEngine } from "../lib/adaptation/signals";
+import { MIN_CHRONIC_HISTORY_DAYS } from "../lib/adaptation/guardrails";
 import { SolverSession, ZERO_LOAD } from "../lib/adaptation/types";
 import { createUser } from "../lib/db";
 import { prisma } from "../lib/prisma";
@@ -342,6 +344,92 @@ async function main() {
     describeChanges({ trigger: "t", constraints: [], diff: { empty: true, changes: [] } }) === "No changes were needed.");
 
   // ======================================================================
+  console.log("\nv3 §4.3 — real life anchors long sessions:");
+
+  const longPlan = [
+    session({ id: "long", date: "2026-08-01", tss: 120, discipline: "Run",
+      type: "Long", durationMinutes: 150, isLong: true }),
+    session({ id: "week", date: "2026-08-04", tss: 60, discipline: "Bike" }),
+  ];
+  const longGuard = {
+    chronicLoad: { metabolic: 40, mechanical: 20, neuromuscular: 8, upper: 5 },
+    previousWeekLoad: { metabolic: 150, mechanical: 80, neuromuscular: 30, upper: 20 },
+    chronicHistoryDays: 60,
+    longSessionDates: ["2026-08-01", "2026-08-02"],
+  };
+  const longBase = {
+    today: "2026-07-31", chronicLoad: longGuard.chronicLoad,
+    preferences: [], constraints: [
+      { kind: "cap_load", type: "hard", source: "test", reason: "cap", factor: 0.6 },
+    ],
+  };
+  const longResult = solve({ ...longBase, sessions: longPlan } as any, { guardrails: longGuard });
+  const longChanges = diffPlans(longPlan, longResult.sessions);
+  check("a long session is never moved",
+    !longChanges.changes.some((c) => c.sessionId === "long" && c.change === "moved"),
+    JSON.stringify(longChanges.changes));
+  check("a long session is never dropped",
+    !longResult.sessions.find((x) => x.id === "long")?.dropped);
+  check("weekday volume is trimmed before the long session",
+    (() => {
+      const w = longChanges.changes.find((c) => c.sessionId === "week");
+      const l = longChanges.changes.find((c) => c.sessionId === "long");
+      return !!w || !l;
+    })(), JSON.stringify(longChanges.changes));
+  check("moving a long session off an allowed day is blocked",
+    checkGuardrails(
+      [{ ...longPlan[0], date: "2026-08-05", movedFrom: "2026-08-01" }],
+      longGuard as any
+    ).some((v) => v.rule === "long_session_moved" || v.rule === "long_session_day"));
+
+  console.log("\nv3 §5 — the ACWR cold-start trap:");
+
+  const spikySessions = [session({ id: "cs", date: "2026-08-03", tss: 200, discipline: "Bike" })];
+  const coldStart = checkGuardrails(spikySessions, {
+    chronicLoad: { metabolic: 3, mechanical: 1, neuromuscular: 1, upper: 0 },
+    previousWeekLoad: ZERO_LOAD,
+    chronicHistoryDays: 10,
+    dailyLoadCeiling: 250,
+  });
+  check("with under 28 days of history ACWR is ignored",
+    !coldStart.some((v) => v.rule === "acwr_block"),
+    "a thin denominator would otherwise zero out the week");
+  check("a daily ceiling governs instead",
+    checkGuardrails(
+      [session({ id: "cs2", date: "2026-08-03", tss: 400, discipline: "Bike" })],
+      { chronicLoad: ZERO_LOAD, previousWeekLoad: ZERO_LOAD,
+        chronicHistoryDays: 10, dailyLoadCeiling: 100 }
+    ).some((v) => v.rule === "daily_ceiling"));
+  check("with a full history ACWR applies again",
+    checkGuardrails(spikySessions, {
+      chronicLoad: { metabolic: 3, mechanical: 1, neuromuscular: 1, upper: 0 },
+      previousWeekLoad: ZERO_LOAD,
+      chronicHistoryDays: MIN_CHRONIC_HISTORY_DAYS,
+    }).some((v) => v.rule === "acwr_block"));
+
+  console.log("\nv3 §5 — cross-sport swap penalty:");
+
+  const ranInsteadOfSwam = crossSportSwapEngine(
+    [{ date: "2026-07-30", plannedDiscipline: "Swim", actualDiscipline: "Run" }],
+    "2026-07-31");
+  check("running instead of swimming restricts the legs",
+    ranInsteadOfSwam.constraints.some(
+      (c) => c.type === "hard" && c.component === "mechanical"),
+    JSON.stringify(ranInsteadOfSwam.facts));
+  check("the restriction lasts 48 hours",
+    ranInsteadOfSwam.constraints[0]?.toDate === "2026-08-02",
+    ranInsteadOfSwam.constraints[0]?.toDate);
+
+  const swamInsteadOfRan = crossSportSwapEngine(
+    [{ date: "2026-07-30", plannedDiscipline: "Run", actualDiscipline: "Swim" }],
+    "2026-07-31");
+  check("swapping to a lower-impact sport costs the legs nothing",
+    swamInsteadOfRan.constraints.length === 0,
+    "penalising every swap equally would needlessly suppress training");
+  check("no swaps means no constraints",
+    crossSportSwapEngine([], "2026-07-31").constraints.length === 0);
+
+  // ======================================================================
   console.log("\nWeekly intent — load debt is forgiven, never repaid:");
 
   const wk = (weekStart: string, plannedLoad: number, actualLoad: number) =>
@@ -556,16 +644,38 @@ async function main() {
       const after = await prisma.plannedSession.findMany({
         where: { planId: recPlan.id }, orderBy: { scheduledDate: "asc" },
       });
+      const on = (d: string, discipline?: string) =>
+        after.find(
+          (r) =>
+            (r.scheduledDate
+              ? `${r.scheduledDate.getFullYear()}-${String(r.scheduledDate.getMonth() + 1).padStart(2, "0")}-${String(r.scheduledDate.getDate()).padStart(2, "0")}`
+              : "") === d &&
+            !r.sourceActivityId &&
+            (!discipline || r.discipline === discipline)
+        )!;
       check("the completed session records what was actually done",
-        after[0].status === "completed" && after[0].actualTss === 40,
-        `${after[0].status} / ${after[0].actualTss}`);
+        on("2026-07-27").status === "completed" && on("2026-07-27").actualTss === 40,
+        `${on("2026-07-27").status} / ${on("2026-07-27").actualTss}`);
       check("the missed session carries no fake load",
-        after[1].status === "missed" && after[1].actualTss === null,
-        `${after[1].status} / ${after[1].actualTss}`);
-      check("the substituted session records the load actually done",
-        after[2].status === "substituted" && after[2].actualTss === 95,
-        `${after[2].status} / ${after[2].actualTss}`);
-      check("a planned rest day is never marked missed", after[3].status === "planned");
+        on("2026-07-28").status === "missed" && on("2026-07-28").actualTss === null,
+        `${on("2026-07-28").status} / ${on("2026-07-28").actualTss}`);
+      // v3 §2.4 — the Baseline Rule.
+      check("a substituted session keeps its planned load as the baseline",
+        on("2026-07-29").status === "substituted" && on("2026-07-29").tss === 50,
+        `status ${on("2026-07-29").status}, planned tss ${on("2026-07-29").tss}`);
+      check("the deviation never overwrites the planned session",
+        on("2026-07-29").actualTss === null,
+        "the baseline is the only way to measure intent against reality");
+      check("the swap is reported for the penalty engine",
+        rec.swaps.some((s) => s.plannedDiscipline === "Run" && s.actualDiscipline === "Bike"),
+        JSON.stringify(rec.swaps));
+      const ghostActual = await prisma.plannedSession.findMany({
+        where: { planId: recPlan.id, status: "unplanned" },
+      });
+      check("what was actually done is recorded as its own session",
+        ghostActual.some((g) => g.actualTss === 95), JSON.stringify(ghostActual.map(g=>g.actualTss)));
+      check("a planned rest day is never marked missed",
+        on("2026-07-30", "Rest").status === "planned", on("2026-07-30", "Rest").status);
 
       const again = await reconcilePlanWithActivities(recUser.id, {
         now: new Date("2026-07-31T09:00:00"),
@@ -607,15 +717,18 @@ async function main() {
       const unplannedRows = await prisma.plannedSession.findMany({
         where: { planId: recPlan.id, status: "unplanned" },
       });
-      check("an unplanned session appears in the plan", unplannedRows.length === 1);
+      // Two: the ride done instead of the planned run, and the surprise run.
+      check("unplanned training appears in the plan", unplannedRows.length === 2,
+        String(unplannedRows.length));
+      const surprise = unplannedRows.find((r) => r.actualTss === 35);
       check("it carries the load actually done, not prescribed load",
-        unplannedRows[0]?.tss === 0 && unplannedRows[0]?.actualTss === 35,
-        `tss ${unplannedRows[0]?.tss} actual ${unplannedRows[0]?.actualTss}`);
+        surprise?.tss === 0 && surprise?.actualTss === 35,
+        `tss ${surprise?.tss} actual ${surprise?.actualTss}`);
       await reconcilePlanWithActivities(recUser.id, { now: new Date("2026-07-31T09:00:00") });
       const afterTwice = await prisma.plannedSession.count({
         where: { planId: recPlan.id, status: "unplanned" },
       });
-      check("re-running does not duplicate or reclassify it", afterTwice === 1, String(afterTwice));
+      check("re-running does not duplicate or reclassify it", afterTwice === 2, String(afterTwice));
 
       const manual = await prisma.plannedSession.create({
         data: {

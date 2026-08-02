@@ -30,6 +30,8 @@ export interface ReconcileResult {
   missed: number;
   /** Activities that matched no planned session at all. */
   unplanned: number;
+  /** Cross-sport swaps detected, for the swap-penalty engine (v3 §5). */
+  swaps: Array<{ date: string; plannedDiscipline: string; actualDiscipline: string }>;
   changes: Array<{
     date: string;
     planned: string;
@@ -104,7 +106,8 @@ export async function reconcilePlanWithActivities(
   }
 
   const consumed = new Set<string>();
-  const result: ReconcileResult = { ...empty, changes: [] };
+  const swaps: Array<{ date: string; plannedDiscipline: string; actualDiscipline: string }> = [];
+  const result: ReconcileResult = { ...empty, changes: [], swaps: [] };
 
   for (const s of sessions) {
     if (!s.scheduledDate) continue;
@@ -139,10 +142,22 @@ export async function reconcilePlanWithActivities(
     } else {
       const other = sameDay.filter((a) => !consumed.has(a.id));
       if (other.length > 0) {
-        for (const a of other) consumed.add(a.id);
+        // v3 §2.4, the Baseline Rule: a completed deviation must NEVER
+        // overwrite the planned session. The planned row is kept as a ghost
+        // with its prescribed load intact — that is the only baseline we have
+        // for measuring intent against reality. The activity is left
+        // unconsumed so it gets its own record below, and the UI hides the
+        // ghost rather than the database losing it.
         outcome = "substituted";
-        actualTss = other.reduce((n, a) => n + a.estimatedTss, 0);
-        actualLabel = other.map((a) => `${a.discipline} ${a.estimatedTss} TSS`).join(" + ");
+        actualTss = null;
+        actualLabel = other
+          .map((a) => `${a.discipline} ${a.estimatedTss} TSS`)
+          .join(" + ");
+        swaps.push({
+          date: day,
+          plannedDiscipline: s.discipline,
+          actualDiscipline: other[0].discipline,
+        });
       } else {
         outcome = "missed";
       }
@@ -187,6 +202,18 @@ export async function reconcilePlanWithActivities(
   );
   result.unplanned = leftover.length;
 
+  // Only report activities we have not already recorded, so a repeat run is a
+  // genuine no-op rather than replaying the same "changes" every time.
+  const alreadyRecorded = new Set(
+    (
+      await prisma.plannedSession.findMany({
+        where: { planId: plan.id, sourceActivityId: { in: leftover.map((a) => a.id) } },
+        select: { sourceActivityId: true },
+      })
+    ).map((r) => r.sourceActivityId!)
+  );
+  const newlySeen = leftover.filter((a) => !alreadyRecorded.has(a.id));
+
   if (!opts.dryRun) {
     for (const a of leftover) {
       const date = localISO(a.startDate);
@@ -219,7 +246,7 @@ export async function reconcilePlanWithActivities(
     }
   }
 
-  for (const a of leftover) {
+  for (const a of newlySeen) {
     result.changes.push({
       date: localISO(a.startDate),
       planned: "nothing planned",
@@ -230,6 +257,7 @@ export async function reconcilePlanWithActivities(
     });
   }
 
+  result.swaps = swaps;
   return result;
 }
 

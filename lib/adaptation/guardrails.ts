@@ -15,7 +15,7 @@ import {
   SolverSession,
   ZERO_LOAD,
 } from "./types";
-import { acwr, addLoad, scaleLoad as scaleVector, sumLoad, totalLoad } from "./load-vector";
+import { acwr, addLoad, localISO, scaleLoad as scaleVector, sumLoad, totalLoad } from "./load-vector";
 
 export interface GuardrailLimits {
   /** Max week-on-week increase in total load. */
@@ -106,7 +106,21 @@ export interface GuardrailContext {
   limits?: GuardrailLimits;
   /** Athlete is ill / medically suspended — blocks all training. */
   suspended?: boolean;
+  /**
+   * Days of reliable chronic-load history (v3 §5, the Cold Start Trap).
+   * With fewer than 28, the 28-day denominator is artificially low, ACWR
+   * spikes, and the engine would zero out the athlete's week. Below the
+   * threshold ACWR is ignored entirely and a daily ceiling governs instead.
+   */
+  chronicHistoryDays?: number;
+  /** Daily load ceiling used while chronic history is too short. */
+  dailyLoadCeiling?: number;
+  /** Dates a long session is allowed to occupy (v3 §4.3). */
+  longSessionDates?: string[];
 }
+
+/** v3 §5: ACWR needs a trustworthy 28-day denominator. */
+export const MIN_CHRONIC_HISTORY_DAYS = 28;
 
 /**
  * Checks a candidate plan. Returns every violation found (not just the first),
@@ -168,12 +182,34 @@ export function checkGuardrails(
   // chronicLoad is an EWMA **per day**, so the acute side must also be per
   // day. Comparing a multi-day sum against a daily average inflates the ratio
   // several times over and blocks perfectly reasonable weeks.
-  if (totalLoad(ctx.chronicLoad) > 0 && active.length > 0) {
+  const historyDays = ctx.chronicHistoryDays ?? MIN_CHRONIC_HISTORY_DAYS;
+  const acwrTrustworthy = historyDays >= MIN_CHRONIC_HISTORY_DAYS;
+
+  if (!acwrTrustworthy) {
+    // Cold start: govern by a daily ceiling instead of a ratio built on a
+    // denominator we do not have.
+    const ceiling = ctx.dailyLoadCeiling;
+    if (ceiling && ceiling > 0) {
+      for (const [date, list] of byDate(active)) {
+        const dayTotal = list.reduce((n, s) => n + totalLoad(s.load), 0);
+        if (dayTotal > ceiling + 0.5) {
+          violations.push({
+            rule: "daily_ceiling",
+            detail:
+              `${date} totals ${Math.round(dayTotal)} load, above the ` +
+              `${Math.round(ceiling)} daily ceiling used while there is less ` +
+              `than ${MIN_CHRONIC_HISTORY_DAYS} days of history.`,
+            severity: "block",
+          });
+        }
+      }
+    }
+  } else if (totalLoad(ctx.chronicLoad) > 0 && active.length > 0) {
     const dates = active.map((s) => s.date).sort();
     const windowStart = new Date(dates[0] + "T00:00:00");
     const windowEnd = new Date(windowStart);
     windowEnd.setDate(windowEnd.getDate() + 6);
-    const endISO = windowEnd.toISOString().slice(0, 10);
+    const endISO = localISO(windowEnd);
 
     const inWindow = active.filter((s) => s.date >= dates[0] && s.date <= endISO);
     const acuteDaily = scaleVector(sumLoad(inWindow.map((s) => s.load)), 1 / 7);
@@ -248,6 +284,34 @@ export function checkGuardrails(
         detail:
           `A hard run on ${prev.date} directly before a hard bike on ${cur.date} ` +
           `leaves the legs unable to produce the bike session's purpose.`,
+        severity: "block",
+      });
+    }
+  }
+
+  // ---- Long sessions stay where real life allows (v3 §4.3) --------------
+  // "Do not shift weekend volume to weekday mornings; trim weekday volume
+  // first." A long session that has been moved off an allowed day is a hard
+  // failure, not a penalty to be traded away.
+  for (const s of active) {
+    if (!s.isLong) continue;
+    if (s.movedFrom && s.movedFrom !== s.date) {
+      violations.push({
+        rule: "long_session_moved",
+        detail:
+          `${s.discipline} on ${s.date} is a long session and is pinned to the ` +
+          `days you can actually accommodate it.`,
+        severity: "block",
+      });
+      continue;
+    }
+    const allowed = ctx.longSessionDates;
+    if (allowed && allowed.length > 0 && !allowed.includes(s.date)) {
+      violations.push({
+        rule: "long_session_day",
+        detail:
+          `${s.discipline} on ${s.date} is a long session but that is not a day ` +
+          `you have time for one.`,
         severity: "block",
       });
     }

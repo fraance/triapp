@@ -346,9 +346,14 @@ export async function getTodayView(
   const planStart = plan.startDate ?? plan.createdAt;
 
   // Attach a real calendar date to every session.
+  //
+  // `scheduledDate` wins where it exists. It is what the adaptation engine and
+  // manual rescheduling write, so trusting week/day instead would show the
+  // athlete a session on the day it was originally written rather than the day
+  // they actually moved it to.
   const dated = plan.sessions
     .map((s) => {
-      const date = sessionDate(planStart, s.week, s.day);
+      const date = s.scheduledDate ?? sessionDate(planStart, s.week, s.day);
       return date ? { session: s, date } : null;
     })
     .filter((x): x is { session: (typeof plan.sessions)[number]; date: Date } => x !== null);
@@ -363,17 +368,47 @@ export async function getTodayView(
     pace: item.session.pace ?? "",
     status: item.session.status,
     day: item.session.day,
-    week: item.session.week,
+    week: weekNumberFor(planStart, item.date),
     date: toISODate(item.date),
   });
 
-  const todaysItems = dated.filter((d) => isSameDay(d.date, today));
-  const tomorrowItems = dated.filter((d) => isSameDay(d.date, tomorrow));
+  /**
+   * v3 §2.4, the Baseline Rule: the database keeps the planned session as a
+   * ghost record so the engine never loses its intent-vs-reality baseline, but
+   * the athlete should not be shown a session they did not do alongside the one
+   * they did. Hide the ghost in the UI only.
+   */
+  const hideGhosts = (items: typeof dated) => {
+    const trainedOn = new Set(
+      items
+        .filter(
+          (d) =>
+            d.session.status === "completed" ||
+            d.session.status === "unplanned" ||
+            (d.session.actualTss ?? 0) > 0
+        )
+        .map((d) => toISODate(d.date))
+    );
+    return items.filter((d) => {
+      const ghost =
+        d.session.status === "substituted" || d.session.status === "missed";
+      return !(ghost && trainedOn.has(toISODate(d.date)));
+    });
+  };
+
+  const todaysItems = hideGhosts(dated.filter((d) => isSameDay(d.date, today)));
+  const tomorrowItems = hideGhosts(dated.filter((d) => isSameDay(d.date, tomorrow)));
 
   const currentWeek = weekNumberFor(planStart, today);
   const inPlanRange = currentWeek >= 1 && currentWeek <= plan.weekCount;
 
-  const weekSessions = plan.sessions.filter((s) => s.week === currentWeek);
+  // Which week a session belongs to follows from where it actually sits, for
+  // the same reason as above: a session moved into next week should count
+  // towards next week's load, not the week it was written in.
+  const weekItems = dated.filter(
+    (d) => weekNumberFor(planStart, d.date) === currentWeek
+  );
+  const weekSessions = weekItems.map((d) => d.session);
   const weekTssPlanned = weekSessions.reduce((sum, s) => sum + (s.tss || 0), 0);
   // Counts what was actually trained. "substituted" days matter here: the
   // athlete did train, just not the prescribed discipline, and ignoring that

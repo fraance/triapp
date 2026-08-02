@@ -18,7 +18,7 @@ import {
   SolverSession,
   LOAD_COMPONENTS,
 } from "./types";
-import { totalLoad, acwr } from "./load-vector";
+import { totalLoad, acwr, localISO } from "./load-vector";
 
 // ---- Execution drift ------------------------------------------------------
 
@@ -60,7 +60,7 @@ export function executionDriftEngine(
   const constraints: Constraint[] = [];
   const from = new Date(today + "T00:00:00");
   from.setDate(from.getDate() - lookback);
-  const fromISO = from.toISOString().slice(0, 10);
+  const fromISO = localISO(from);
 
   const recent = completed.filter((c) => c.date >= fromISO && c.date <= today);
   if (recent.length === 0) {
@@ -99,7 +99,9 @@ export function executionDriftEngine(
 
   const in48h = new Date(today + "T00:00:00");
   in48h.setDate(in48h.getDate() + 2);
-  const in48hISO = in48h.toISOString().slice(0, 10);
+  // Local formatting: toISOString() rolls a local midnight back a day in any
+  // positive offset, which silently shortened every constraint window.
+  const in48hISO = localISO(in48h);
 
   if (neuroDrift > neuroThreshold) {
     constraints.push({
@@ -230,6 +232,91 @@ export function salvageEngine(
 
     return { sessionId: m.id, score: Math.round(score * 100) / 100, action, reason };
   });
+}
+
+// ---- Cross-sport swap penalty (v3 §5) -------------------------------------
+
+export interface SwapEvent {
+  date: string;
+  plannedDiscipline: string;
+  actualDiscipline: string;
+}
+
+/**
+ * Cross-Sport Swap Penalty (v3 Part 5).
+ *
+ * Running instead of swimming is not a like-for-like substitution: the legs
+ * take eccentric load the plan never budgeted for. The engine applies a
+ * biomechanical penalty and restricts lower-body intensity for 48 hours.
+ *
+ * Note the asymmetry — swapping *towards* a low-impact sport (running replaced
+ * by swimming) costs the legs nothing and produces no constraint. Treating
+ * every swap identically would needlessly suppress training.
+ */
+const LEG_LOADING: Record<string, number> = {
+  run: 1.0,
+  brick: 0.85,
+  strength: 0.6,
+  bike: 0.4,
+  swim: 0.05,
+  other: 0.4,
+};
+
+function legCost(discipline: string): number {
+  const d = (discipline || "").toLowerCase();
+  if (d.includes("swim")) return LEG_LOADING.swim;
+  if (d.includes("brick")) return LEG_LOADING.brick;
+  if (d.includes("run")) return LEG_LOADING.run;
+  if (d.includes("bike") || d.includes("ride") || d.includes("cycl"))
+    return LEG_LOADING.bike;
+  if (d.includes("strength") || d.includes("gym") || d.includes("workout"))
+    return LEG_LOADING.strength;
+  return LEG_LOADING.other;
+}
+
+export function crossSportSwapEngine(
+  swaps: SwapEvent[],
+  today: string
+): SignalOutput {
+  const constraints: Constraint[] = [];
+  if (swaps.length === 0) {
+    return { constraints, preferences: [], facts: { swaps: 0 } };
+  }
+
+  // Only swaps that added leg loading matter.
+  const costly = swaps.filter(
+    (s) => legCost(s.actualDiscipline) - legCost(s.plannedDiscipline) > 0.3
+  );
+
+  const in48h = new Date(today + "T00:00:00");
+  in48h.setDate(in48h.getDate() + 2);
+  const in48hISO = localISO(in48h);
+
+  for (const s of costly.slice(0, 1)) {
+    constraints.push({
+      kind: "max_intensity",
+      type: "hard",
+      source: "cross_sport_swap",
+      reason:
+        `You did ${s.actualDiscipline} on ${s.date} in place of the planned ` +
+        `${s.plannedDiscipline}. That put unbudgeted eccentric load through the ` +
+        `legs, so lower-body intensity is held down for 48 hours.`,
+      fromDate: today,
+      toDate: in48hISO,
+      component: "mechanical",
+      factor: 0.6,
+    });
+  }
+
+  return {
+    constraints,
+    preferences: [],
+    facts: {
+      swaps: swaps.length,
+      legLoadingSwaps: costly.length,
+      detail: costly.map((s) => `${s.plannedDiscipline}->${s.actualDiscipline}`),
+    },
+  };
 }
 
 // ---- Load-pressure helper -------------------------------------------------
