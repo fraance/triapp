@@ -185,7 +185,10 @@ export async function reconcilePlanWithActivities(
         where: { id: s.id },
         data: {
           status: outcome,
-          actualTss: actualTss ?? undefined,
+          // Must be the value itself, not `?? undefined`: Prisma treats
+          // undefined as "leave unchanged", so a substituted session kept a
+          // stale actualTss and the baseline stayed polluted.
+          actualTss,
           completedAt:
             outcome === "missed" ? null : (match?.startDate ?? s.scheduledDate),
         },
