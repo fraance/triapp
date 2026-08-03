@@ -50,6 +50,11 @@ import { describeChanges } from "../lib/adaptation/narrator";
 import { reconcilePlanWithActivities, dailyPlannedVsActual } from "../lib/adaptation/reconcile";
 import { planNextWeek, selectAnchors, RECOVERY_WEEK_FACTOR } from "../lib/adaptation/macro-planner";
 import { crossSportSwapEngine } from "../lib/adaptation/signals";
+import {
+  analyseLimiters,
+  distancesFor,
+  describeLimiters,
+} from "../lib/adaptation/limiter";
 import { MIN_CHRONIC_HISTORY_DAYS } from "../lib/adaptation/guardrails";
 import {
   weeklyHoursFrom,
@@ -612,6 +617,112 @@ async function main() {
   });
   check("with no history the plan is left alone", noHistory.action === "hold");
   check("no history means no invented constraints", noHistory.constraints.length === 0);
+
+  console.log("\nv3 §3.1 — limiter analysis by race-course ROI:");
+
+  // Measured capability: ~2:00/100m swim, ~28 km/h ride, ~5:00/km threshold.
+  const cap = {
+    swimCssSecPer100: 120,
+    bikeSpeedMs: 7.8,
+    runThresholdPaceSec: 300,
+  };
+
+  const olympic = analyseLimiters(cap, { raceType: "Olympic" });
+  check("distances are resolved from the race type",
+    distancesFor("70.3")?.bikeKm === 90 && distancesFor("Olympic")?.runKm === 10);
+  check("an unknown race distance yields no analysis",
+    !analyseLimiters(cap, { raceType: "Adventure Dash" }).hasData);
+  check("every discipline gets a predicted split",
+    olympic.estimates.every((e) => e.predictedSec !== null), JSON.stringify(olympic.estimates));
+
+  check("the bike is the biggest lever on an Olympic course",
+    olympic.ranked[0] === "bike", JSON.stringify(olympic.ranked));
+  check("ROI shares add up to about 1",
+    Math.abs(olympic.estimates.reduce((n, e) => n + e.roi, 0) - 1) < 0.02,
+    String(olympic.estimates.reduce((n, e) => n + e.roi, 0)));
+
+  const long = analyseLimiters(cap, { raceType: "70.3" });
+  const olyBike = olympic.estimates.find((e) => e.discipline === "bike")!;
+  const longBike = long.estimates.find((e) => e.discipline === "bike")!;
+  check("the longer the race, the more a bike gain is worth",
+    (longBike.minutesPer5Pct ?? 0) > (olyBike.minutesPer5Pct ?? 0),
+    `${longBike.minutesPer5Pct} vs ${olyBike.minutesPer5Pct}`);
+
+  const mountainous = analyseLimiters(cap, {
+    raceType: "70.3", bikeElevationGainM: 2000,
+  });
+  const flatBikeSec = long.estimates.find((e) => e.discipline === "bike")!.predictedSec!;
+  const hillyBikeSec = mountainous.estimates.find((e) => e.discipline === "bike")!.predictedSec!;
+  check("a mountainous course slows the predicted bike split",
+    hillyBikeSec > flatBikeSec, `${hillyBikeSec} vs ${flatBikeSec}`);
+  check("and raises the bike's share of the available gain",
+    mountainous.priority.bike > long.priority.bike,
+    `${mountainous.priority.bike} vs ${long.priority.bike}`);
+
+  const openWater = analyseLimiters(cap, { raceType: "Olympic", swimEnvironment: "lake" });
+  const pool = analyseLimiters(cap, { raceType: "Olympic", swimEnvironment: "pool" });
+  check("open water is slower than pool-equivalent pace",
+    openWater.estimates[0].predictedSec! > pool.estimates[0].predictedSec!);
+  const wetsuit = analyseLimiters(cap, {
+    raceType: "Olympic", swimEnvironment: "lake", wetsuitLikely: true,
+  });
+  check("a wetsuit claws some of that back",
+    wetsuit.estimates[0].predictedSec! < openWater.estimates[0].predictedSec!);
+
+  const trail = analyseLimiters(cap, { raceType: "Olympic", runSurface: "trail" });
+  check("trail running is slower than road",
+    trail.estimates[2].predictedSec! > olympic.estimates[2].predictedSec!);
+
+  // Never invent what has not been measured (project rule 2).
+  const partial = analyseLimiters(
+    { swimCssSecPer100: null, bikeSpeedMs: 7.8, runThresholdPaceSec: 300 },
+    { raceType: "Olympic" });
+  check("an unmeasured discipline is excluded, not estimated",
+    partial.estimates.find((e) => e.discipline === "swim")!.predictedSec === null &&
+    !partial.ranked.includes("swim"),
+    JSON.stringify(partial.ranked));
+  check("and the athlete is told why",
+    partial.notes.some((n) => n.includes("swim")), JSON.stringify(partial.notes));
+  check("a total is not claimed when a segment is unknown",
+    partial.predictedTotalSec === null);
+  check("the remaining disciplines still rank",
+    partial.ranked.length === 2);
+
+  check("without a goal time no deficit is invented",
+    olympic.estimates.every((e) => e.deficitSec === null) &&
+    olympic.notes.some((n) => n.includes("No goal time")));
+
+  const withGoal = analyseLimiters(cap, { raceType: "Olympic" }, { goalTimeSec: 9000 });
+  check("with a goal time, the shortfall per discipline is reported",
+    withGoal.estimates.every((e) => e.deficitSec !== null),
+    JSON.stringify(withGoal.estimates.map((e) => e.deficitSec)));
+
+  check("the summary names the biggest lever",
+    describeLimiters(olympic).includes("bike"), describeLimiters(olympic));
+  check("analysis is deterministic",
+    JSON.stringify(analyseLimiters(cap, { raceType: "Olympic" })) === JSON.stringify(olympic));
+
+  console.log("\nAnchors follow the limiter, not just the hardest session:");
+
+  const roiAnchors = selectAnchors(
+    [
+      { id: "swim-hard", discipline: "Swim", tss: 82 },
+      { id: "bike-hard", discipline: "Bike", tss: 80 },
+    ],
+    1,
+    { swim: 0.1, bike: 0.7 }
+  );
+  check("a near-equal session in the limiter discipline is anchored first",
+    roiAnchors[0] === "bike-hard", JSON.stringify(roiAnchors));
+  check("but ROI cannot promote a trivial session over a hard one",
+    selectAnchors(
+      [
+        { id: "easy-bike", discipline: "Bike", tss: 20 },
+        { id: "hard-run", discipline: "Run", tss: 95 },
+      ],
+      1,
+      { bike: 0.9, run: 0.05 }
+    )[0] === "hard-run");
 
   console.log("\nAnchors protect the week's key sessions:");
   const anchorInput = [
