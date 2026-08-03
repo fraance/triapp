@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import FitnessPanel from "@/components/FitnessPanel";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -534,6 +535,14 @@ export default function AthletePage() {
           <button onClick={save} disabled={saving} className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold disabled:opacity-50">
             {saving ? "Saving..." : "Save athlete profile"}
           </button>
+        </div>
+
+        {/* What the coach believes about the body, and how much it trusts it. */}
+        <div className="bg-white/60 rounded-lg p-4 mb-6">
+          <FitnessPanel />
+        </div>
+
+        <div className="flex gap-3 flex-wrap">
           <Link href="/race" className="bg-white text-indigo-700 border border-indigo-300 px-6 py-3 rounded-lg">
             Next: race details →
           </Link>

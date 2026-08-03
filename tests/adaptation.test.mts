@@ -1060,7 +1060,7 @@ async function main() {
     check("their number is untouched", stillTheirs?.ftpWatts === 250);
     const rec2 = await getThresholdRecord(cUser.id);
     check("but the date is refreshed, restoring confidence",
-      rec2.ftp?.at.startsWith("2026-08-03"), rec2.ftp?.at);
+      rec2.ftp?.at.startsWith("2026-08-03") ?? false, rec2.ftp?.at);
 
     // A test they deliberately performed does supersede an older statement.
     const tested = await proposeThreshold(
