@@ -111,6 +111,12 @@ model AthleteProfile {
   /// credited thresholds nobody had re-established.
   thresholdsMeasuredAt Json?
 
+  /// Tests the athlete has chosen to skip, so the engine stops offering them
+  /// for a while. Shape: { "ftp": { "declinedAt": ISO } }.
+  /// v3's North Star: never ask a question they have no new information to
+  /// answer. Re-offering a declined test every day is exactly that.
+  testPreferences Json?
+
   pb5kSec             Int?
   pb10kSec            Int?
   pbHalfSec           Int?
@@ -303,6 +309,10 @@ model PlannedSession {
   /// is meant to re-establish.
   isTest   Boolean @default(false)
   testKind String?
+  /// "device"  the athlete's kit records it, so we read the result from Strava
+  /// "manual"  they have no such device: we explain how to capture it by hand
+  ///           and they type the result in
+  testMode String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

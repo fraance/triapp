@@ -47,7 +47,8 @@ import { GuardrailContext } from "./guardrails";
 import { analyseLimiters, describeLimiters, LimiterAnalysis } from "./limiter";
 import { getThresholdRecord, observationsFor } from "./thresholds";
 import { applyCompletedTests } from "./test-feedback";
-import { planTestInjections, protocolFor } from "./test-injection";
+import { planTestInjections } from "./test-injection";
+import type { ThresholdKind } from "./physiology";
 import {
   thresholdConfidence,
   buildThresholdReport,
@@ -750,6 +751,21 @@ async function injectTests(
 
   const equipment = await equipmentFor(userId);
 
+  // Tests the athlete has already declined. Re-offering them daily is the
+  // interrogation v3's North Star forbids.
+  const prefsRow = await prisma.athleteProfile.findUnique({
+    where: { userId },
+    select: { testPreferences: true },
+  });
+  const declined: Partial<Record<ThresholdKind, string>> = {};
+  if (prefsRow?.testPreferences && typeof prefsRow.testPreferences === "object") {
+    for (const [k, v] of Object.entries(prefsRow.testPreferences as Record<string, any>)) {
+      if (v && typeof v.declinedAt === "string") {
+        declined[k as ThresholdKind] = v.declinedAt.slice(0, 10);
+      }
+    }
+  }
+
   const rows = await prisma.plannedSession.findMany({
     where: {
       planId,
@@ -774,6 +790,7 @@ async function injectTests(
     fits: ctx.fits,
     raceDate: ctx.raceDate,
     frozenUntil: ctx.frozenUntil,
+    declined,
     existingTestDates: existingTests
       .map((t) => (t.scheduledDate ? iso(t.scheduledDate) : null))
       .filter((d): d is string => d !== null),
@@ -796,7 +813,8 @@ async function injectTests(
       where: { id: c.replaceSessionId },
       data: {
         isTest: true,
-        testKind: c.protocol.kind,
+        testKind: c.kind,
+        testMode: c.mode,
         type: "Test",
         discipline: c.protocol.discipline,
         duration: `${c.protocol.durationMinutes} min`,

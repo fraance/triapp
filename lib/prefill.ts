@@ -383,6 +383,23 @@ export async function resolveSuggestion(
       create: { userId, [field]: value } as any,
       update: { [field]: value } as any,
     });
+
+    // If this field is a threshold, accepting it re-establishes it. Updating
+    // the value without the date would leave a fresh number wearing an old
+    // timestamp, and confidence decay would keep treating it as stale.
+    try {
+      const { THRESHOLD_FIELDS, recordThreshold } = await import(
+        "./adaptation/thresholds"
+      );
+      const kind = (
+        Object.keys(THRESHOLD_FIELDS) as Array<keyof typeof THRESHOLD_FIELDS>
+      ).find((k) => THRESHOLD_FIELDS[k] === field);
+      if (kind && typeof value === "number") {
+        await recordThreshold(userId, kind, value, "derived", new Date());
+      }
+    } catch (e) {
+      console.error("Could not date the accepted threshold:", e);
+    }
   }
 
   await prisma.profileSuggestion.update({

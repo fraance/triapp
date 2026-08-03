@@ -18,6 +18,7 @@
  *  - **Never in race week or taper**, and never two tests close together.
  */
 import { ThresholdKind, ThresholdConfidence } from "./physiology";
+import { manualProtocolFor, ManualProtocol } from "./manual-test";
 
 export interface TestProtocol {
   kind: ThresholdKind;
@@ -126,9 +127,15 @@ export function protocolFor(
   return null;
 }
 
+export type TestMode = "device" | "manual";
+
 export interface InjectionCandidate {
   kind: ThresholdKind;
   protocol: TestProtocol;
+  /** How the result will be captured. */
+  mode: TestMode;
+  /** Present when the athlete must capture and enter it themselves. */
+  manual?: ManualProtocol;
   confidence: number;
   /** The session this test should replace. */
   replaceSessionId: string;
@@ -161,7 +168,16 @@ export interface InjectionContext {
   existingTestDates?: string[];
   /** Earliest date the engine may touch (commitment window). */
   frozenUntil?: string;
+  /**
+   * Tests the athlete has skipped, and when. A declined test is not offered
+   * again until the cooling-off period has passed — re-asking daily is the
+   * interrogation v3's North Star forbids.
+   */
+  declined?: Partial<Record<ThresholdKind, string>>;
 }
+
+/** How long a skipped test is left alone. */
+export const DECLINE_COOLDOWN_DAYS = 21;
 
 /** No testing inside this many days of the race — it is taper, not training. */
 export const TAPER_BLACKOUT_DAYS = 14;
@@ -194,8 +210,29 @@ export function planTestInjections(
     .sort((a, b) => a.confidence - b.confidence);
 
   for (const c of needing) {
-    const protocol = protocolFor(c.kind, ctx.equipment);
-    if (!protocol) continue; // cannot be tested honestly — skip, never fake it
+    // Respect a skip. The athlete already answered this question.
+    const declinedAt = ctx.declined?.[c.kind];
+    if (declinedAt && daysBetween(declinedAt, ctx.today) < DECLINE_COOLDOWN_DAYS) {
+      continue;
+    }
+
+    // Prefer the protocol their kit records for them. Where they have no such
+    // device, fall back to capturing it by hand rather than abandoning the
+    // threshold to decay forever.
+    const deviceProtocol = protocolFor(c.kind, ctx.equipment);
+    const manual = deviceProtocol ? null : manualProtocolFor(c.kind);
+    if (!deviceProtocol && !manual) continue;
+
+    const mode: TestMode = deviceProtocol ? "device" : "manual";
+    const protocol: TestProtocol = deviceProtocol ?? {
+      kind: manual!.kind,
+      discipline: manual!.discipline,
+      name: manual!.name,
+      instructions: [manual!.why, ...manual!.steps].join(" "),
+      durationMinutes: manual!.durationMinutes,
+      tss: manual!.tss,
+      requires: [],
+    };
 
     const slot = ctx.slots.find((s) => {
       if (s.isTest) return false;
@@ -224,13 +261,19 @@ export function planTestInjections(
     candidates.push({
       kind: c.kind,
       protocol,
+      mode,
+      manual: manual ?? undefined,
       confidence: c.confidence,
       replaceSessionId: slot.id,
       date: slot.date,
       reason:
         `Confidence in your ${c.kind} has fallen to ` +
         `${Math.round(c.confidence * 100)}% (${c.basis}), so ${slot.discipline} ` +
-        `on ${slot.date} becomes a test to re-establish it.`,
+        `on ${slot.date} becomes a test to re-establish it.` +
+        (mode === "manual"
+          ? " You have no device that records this, so you will time it " +
+            "yourself and enter the result — or skip it."
+          : ""),
     });
   }
 

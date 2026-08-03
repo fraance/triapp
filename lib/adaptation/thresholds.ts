@@ -150,6 +150,137 @@ export async function recordManualThresholds(
   return changed;
 }
 
+export interface ProposalOutcome {
+  kind: ThresholdKind;
+  /** "applied" | "suggested" | "corroborated" | "unchanged" */
+  outcome: "applied" | "suggested" | "corroborated" | "unchanged";
+  previous: number | null;
+  value: number;
+  reason: string;
+}
+
+/** Human labels for the suggestion the athlete is shown. */
+const KIND_LABELS: Record<ThresholdKind, string> = {
+  ftp: "FTP",
+  css: "Swim CSS",
+  runThreshold: "Run threshold pace",
+  maxHr: "Max heart rate",
+  thresholdHr: "Threshold heart rate",
+};
+
+function formatValue(kind: ThresholdKind, v: number): string {
+  if (kind === "ftp") return `${v} W`;
+  if (kind === "maxHr" || kind === "thresholdHr") return `${v} bpm`;
+  const m = Math.floor(v / 60);
+  const s = Math.round(v % 60);
+  const per = kind === "css" ? "/100m" : "/km";
+  return `${m}:${String(s).padStart(2, "0")}${per}`;
+}
+
+/**
+ * Proposes a threshold the engine has worked out, rather than imposing it.
+ *
+ * A value the athlete typed in is their own statement about their body. An
+ * engine-derived figure must not silently replace it — the athlete would have
+ * no idea their numbers had moved, and no way to object (project rule 1).
+ *
+ * The rule:
+ *   - No existing measurement, or the new evidence is at least as strong and
+ *     newer → apply it. A test the athlete deliberately performed supersedes
+ *     an older manual entry.
+ *   - Weaker evidence (derived from ordinary training) that materially differs
+ *     from a manual value → raise it as a choice and leave their value alone.
+ *   - Difference inside tolerance → keep their value, but refresh the date:
+ *     the evidence corroborates rather than contradicts.
+ */
+export async function proposeThreshold(
+  userId: string,
+  kind: ThresholdKind,
+  value: number,
+  source: MeasurementSource,
+  at: Date = new Date()
+): Promise<ProposalOutcome> {
+  const { prisma: db } = await import("../prisma");
+  const { isMeaningfulDifference } = await import("../prefill");
+
+  const field = THRESHOLD_FIELDS[kind];
+  const profile = await db.athleteProfile.findUnique({ where: { userId } });
+  const previous =
+    profile != null
+      ? ((profile as never as Record<string, unknown>)[field] as number | null)
+      : null;
+  const record = parseRecord(profile?.thresholdsMeasuredAt);
+  const existing = record[kind];
+
+  if (previous == null || !existing) {
+    await recordThreshold(userId, kind, value, source, at);
+    return {
+      kind, outcome: "applied", previous, value,
+      reason: "no previous measurement to conflict with",
+    };
+  }
+
+  if (!isMeaningfulDifference(field, previous, value)) {
+    // Same number within tolerance: corroboration, so re-date it but keep the
+    // athlete's own value and provenance.
+    const next: ThresholdRecord = {
+      ...record,
+      [kind]: { at: at.toISOString(), source: existing.source, value: previous },
+    };
+    await db.athleteProfile.update({
+      where: { userId },
+      data: { thresholdsMeasuredAt: next as object },
+    });
+    return {
+      kind, outcome: "corroborated", previous, value,
+      reason: "the new evidence agrees with the stored value",
+    };
+  }
+
+  const newerAndAtLeastAsStrong =
+    SOURCE_STRENGTH[source] >= SOURCE_STRENGTH[existing.source] &&
+    at >= new Date(existing.at);
+
+  if (newerAndAtLeastAsStrong) {
+    await recordThreshold(userId, kind, value, source, at);
+    return {
+      kind, outcome: "applied", previous, value,
+      reason: `a ${source} measurement supersedes the earlier ${existing.source} one`,
+    };
+  }
+
+  // Weaker evidence against something the athlete stated. Offer the choice;
+  // never decide for them, and never nag twice about the same value.
+  await db.profileSuggestion.upsert({
+    where: { userId_field: { userId, field } },
+    create: {
+      userId,
+      field,
+      label: KIND_LABELS[kind],
+      valueType: "number",
+      currentValue: String(previous),
+      currentDisplay: formatValue(kind, previous),
+      suggestedValue: String(value),
+      suggestedDisplay: formatValue(kind, value),
+      origin: `derived from your training on ${at.toDateString()}`,
+      status: "pending",
+    },
+    update: {
+      suggestedValue: String(value),
+      suggestedDisplay: formatValue(kind, value),
+      currentValue: String(previous),
+      currentDisplay: formatValue(kind, previous),
+      origin: `derived from your training on ${at.toDateString()}`,
+      status: "pending",
+    },
+  });
+
+  return {
+    kind, outcome: "suggested", previous, value,
+    reason: `your ${KIND_LABELS[kind]} is ${formatValue(kind, previous)}; training suggests ${formatValue(kind, value)} — your choice`,
+  };
+}
+
 /**
  * Observation list for the confidence model.
  *

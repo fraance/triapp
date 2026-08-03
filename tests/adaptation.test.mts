@@ -75,6 +75,13 @@ import {
   TAPER_BLACKOUT_DAYS,
 } from "../lib/adaptation/test-injection";
 import { analyseTest } from "../lib/adaptation/test-feedback";
+import {
+  manualProtocolFor,
+  computeManualThreshold,
+  isManualError,
+  parseSeconds,
+} from "../lib/adaptation/manual-test";
+import { proposeThreshold } from "../lib/adaptation/thresholds";
 import { MIN_CHRONIC_HISTORY_DAYS } from "../lib/adaptation/guardrails";
 import {
   weeklyHoursFrom,
@@ -949,6 +956,122 @@ async function main() {
     analyseTest({ kind: "maxHr",
       activity: { movingTime: 2400, distance: 8000, avgWatts: null,
         maxHeartRate: 191, avgHeartRate: 150 } })?.value === 191);
+
+  console.log("\nNo device? Capture it by hand, or skip it:");
+
+  check("without a power meter a hand-capture protocol is offered",
+    manualProtocolFor("ftp") !== null,
+    "abandoning the threshold to decay forever is not a decision");
+  check("the protocol explains why they are doing it by hand",
+    (manualProtocolFor("css")?.why ?? "").length > 30);
+  check("it gives step-by-step instructions",
+    (manualProtocolFor("css")?.steps.length ?? 0) >= 4);
+  check("and asks only for what they can observe",
+    JSON.stringify(manualProtocolFor("css")?.fields.map((f) => f.key)) === '["t400","t200"]',
+    "never ask them to compute the threshold themselves");
+
+  const cssManual = computeManualThreshold("css", { t400: "7:20", t200: "3:25" });
+  check("CSS is worked out from the two swim times",
+    !isManualError(cssManual) && (cssManual as any).value === 118,
+    JSON.stringify(cssManual));
+  check("times accept mm:ss or plain seconds",
+    parseSeconds("7:20") === 440 && parseSeconds("440") === 440 && parseSeconds("x") === null);
+  check("swapped swim times are caught, not averaged into nonsense",
+    isManualError(computeManualThreshold("css", { t400: "3:25", t200: "7:20" })));
+  check("an implausible CSS is refused",
+    isManualError(computeManualThreshold("css", { t400: "0:50", t200: "0:20" })));
+
+  const ftpManual = computeManualThreshold("ftp", { avgWatts: 200 });
+  check("a hand-entered FTP is taken as 95% of the 20-minute power",
+    !isManualError(ftpManual) && (ftpManual as any).value === 190);
+  check("a mistyped FTP is refused rather than stored",
+    isManualError(computeManualThreshold("ftp", { avgWatts: 5000 })),
+    "a wrong threshold silently drives every session after it");
+
+  const runManual = computeManualThreshold("runThreshold", { time5k: "27:57" });
+  check("a hand-timed 5 km gives threshold pace",
+    !isManualError(runManual) && (runManual as any).value === 352,
+    JSON.stringify(runManual));
+  check("a hand-counted pulse is accepted",
+    !isManualError(computeManualThreshold("maxHr", { bpm: 188 })));
+  check("an impossible pulse is refused",
+    isManualError(computeManualThreshold("maxHr", { bpm: 400 })));
+  check("a blank entry asks again rather than storing zero",
+    isManualError(computeManualThreshold("ftp", {})));
+
+  const noDevice = planTestInjections([lowFtp], { ...injCtx, equipment: {} });
+  check("with no device at all, the manual route is offered",
+    noDevice.length === 1 && noDevice[0].mode === "manual",
+    JSON.stringify(noDevice.map((c) => c.mode)));
+  check("and the athlete is told they will time it themselves",
+    noDevice[0].reason.includes("yourself"), noDevice[0].reason);
+  check("with the device, no manual work is asked of them",
+    planTestInjections([lowFtp], injCtx)[0].mode === "device");
+
+  check("a skipped test is not offered again immediately",
+    planTestInjections([lowFtp], {
+      ...injCtx, equipment: {}, declined: { ftp: "2026-08-01" },
+    }).length === 0, "re-asking daily is interrogation, not coaching");
+  check("but it returns after the cooling-off period",
+    planTestInjections([lowFtp], {
+      ...injCtx, equipment: {}, declined: { ftp: "2026-06-01" },
+    }).length === 1);
+
+  console.log("\nDerived values are offered, never imposed:");
+
+  const cEmail = `choice-${Date.now()}@test.local`;
+  const cUser = await createUser(cEmail, "pw-test-1234");
+  try {
+    // The athlete states their own FTP.
+    await recordThreshold(cUser.id, "ftp", 250, "manual", new Date("2026-08-01T09:00:00"));
+
+    // Training later suggests something materially different.
+    const derived = await proposeThreshold(
+      cUser.id, "ftp", 220, "derived", new Date("2026-08-02T09:00:00"));
+    check("a derived value does not overwrite what the athlete stated",
+      derived.outcome === "suggested", derived.outcome);
+    const kept = await prisma.athleteProfile.findUnique({ where: { userId: cUser.id } });
+    check("their own figure is left in place", kept?.ftpWatts === 250, String(kept?.ftpWatts));
+
+    const suggestion = await prisma.profileSuggestion.findUnique({
+      where: { userId_field: { userId: cUser.id, field: "ftpWatts" } },
+    });
+    check("the difference is raised as a choice", suggestion?.status === "pending");
+    check("both figures are shown to them",
+      suggestion?.currentDisplay === "250 W" && suggestion?.suggestedDisplay === "220 W",
+      `${suggestion?.currentDisplay} vs ${suggestion?.suggestedDisplay}`);
+
+    // Accepting it must also re-date the threshold.
+    const { resolveSuggestion } = await import("../lib/prefill");
+    await resolveSuggestion(cUser.id, "ftpWatts", "accept");
+    const after = await prisma.athleteProfile.findUnique({ where: { userId: cUser.id } });
+    check("accepting applies the derived figure", after?.ftpWatts === 220);
+    const rec = await getThresholdRecord(cUser.id);
+    check("and re-dates it, so it is not treated as stale",
+      new Date(rec.ftp!.at) > new Date("2026-08-01T09:00:00"), rec.ftp?.at);
+
+    // A close-enough value corroborates rather than conflicting.
+    await recordThreshold(cUser.id, "ftp", 250, "manual", new Date("2026-08-01T09:00:00"));
+    const close = await proposeThreshold(
+      cUser.id, "ftp", 252, "derived", new Date("2026-08-03T09:00:00"));
+    check("a value inside tolerance corroborates instead of nagging",
+      close.outcome === "corroborated", close.outcome);
+    const stillTheirs = await prisma.athleteProfile.findUnique({ where: { userId: cUser.id } });
+    check("their number is untouched", stillTheirs?.ftpWatts === 250);
+    const rec2 = await getThresholdRecord(cUser.id);
+    check("but the date is refreshed, restoring confidence",
+      rec2.ftp?.at.startsWith("2026-08-03"), rec2.ftp?.at);
+
+    // A test they deliberately performed does supersede an older statement.
+    const tested = await proposeThreshold(
+      cUser.id, "ftp", 265, "test", new Date("2026-08-05T09:00:00"));
+    check("a completed test supersedes an older manual entry",
+      tested.outcome === "applied", tested.outcome);
+  } finally {
+    await prisma.profileSuggestion.deleteMany({ where: { userId: cUser.id } });
+    await prisma.athleteProfile.deleteMany({ where: { userId: cUser.id } });
+    await prisma.user.deleteMany({ where: { id: cUser.id } });
+  }
 
   console.log("\nMeasurement dates are recorded, not guessed:");
 

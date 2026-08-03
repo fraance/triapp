@@ -15,7 +15,7 @@
  */
 import { prisma } from "../prisma";
 import { ThresholdKind } from "./physiology";
-import { recordThreshold } from "./thresholds";
+import { recordThreshold, proposeThreshold } from "./thresholds";
 
 export interface TestResult {
   kind: ThresholdKind;
@@ -238,15 +238,21 @@ export async function applyCompletedTests(
       continue;
     }
 
-    await recordThreshold(userId, kind, result.value, "test", activity.startDate);
+    // A test the athlete deliberately performed supersedes an older manual
+    // entry, but if it somehow carries weaker evidence than what is stored,
+    // proposeThreshold raises it as a choice rather than imposing it.
+    const proposal = await proposeThreshold(
+      userId, kind, result.value, "test", activity.startDate
+    );
 
     outcomes.push({
       sessionId: test.id,
       kind,
-      applied: true,
+      applied: proposal.outcome === "applied",
       previous,
       value: result.value,
       method: result.method,
+      reason: proposal.outcome === "applied" ? undefined : proposal.reason,
     });
   }
 
