@@ -264,6 +264,9 @@ plan. That is what makes every change reproducible and explainable.
 | `limiter.ts` | Race-course ROI ranking (§3.1) |
 | `physiology.ts` | Threshold confidence decay, metabolic state (§2.1) |
 | `threshold-context.ts` | Feeds confidence into the coach prompt |
+| `thresholds.ts` | Measurement dates and provenance (manual/test/derived) |
+| `test-injection.ts` | Schedules fitness tests (§3.4) |
+| `test-feedback.ts` | Completed test → new threshold |
 | `signals.ts` | Execution drift, missed-session salvage, fatigue pressure |
 | `solver.ts` | Deterministic beam search + scoring |
 | `engine.ts` | Orchestration, hysteresis, versioning, audit log |
@@ -400,11 +403,30 @@ exponentially with quality-specific half-lives (CSS 90 d, FTP 42 d, max HR
 RPE; below 0.5 a test is scheduled. Metabolic state estimates glycogen from
 trailing 48-hour load and caps **intensity, not volume**, when depleted.
 
-⚠️ Confidence is deliberately not anchored on `profile.updatedAt` — that moves
-on any profile write and credited thresholds nobody had re-established. There
-are **no per-threshold measurement dates in the schema**; confidence rests on
-dated training evidence only. A `thresholdsMeasuredAt` field would make this
-materially more accurate.
+### Threshold lifecycle (2 Aug 2026)
+
+`AthleteProfile.thresholdsMeasuredAt` (JSONB) records, per threshold, when it
+was established and how: `manual` | `test` | `derived`, with source strengths
+1.0 / 1.0 / 0.75. Confidence decay reads these dates. It is deliberately **not**
+anchored on `profile.updatedAt`, which moves on any profile write.
+
+1. **Manual baseline.** `recordManualThresholds()` runs on profile save. Only
+   values that actually changed are re-dated, so editing an unrelated field
+   cannot make a stale FTP look fresh. Clearing passes `null`, never
+   `undefined`, so no date is stranded beside an empty value.
+2. **Automatic testing.** Below confidence 0.5, `planTestInjections()` converts
+   an existing quality session into a test — never adds load, never takes an
+   anchor, never inside 14 days of the race, never within 5 days of another
+   test, never on a day too short. Protocols are gated on measurable equipment:
+   no power meter → HR protocol; no pool → no CSS test at all.
+3. **Feedback loop.** `applyCompletedTests()` reads the actual activity, derives
+   the new value and writes value + date back. Returns nothing when the data
+   cannot support a trustworthy figure — a wrong threshold silently drives every
+   session after it. CSS is deliberately declined: Strava does not expose the
+   400/200 splits a real CSS test needs.
+
+Backfill for pre-existing undated values:
+`npx tsx scripts/backfill-threshold-dates.mts <email> --apply`
 
 ### Open questions for phase 2
 
@@ -427,9 +449,14 @@ materially more accurate.
 - With those mock hours his existing plan does not fit (Tue needs 120 min
   against 60 available). The plan was generated assuming unlimited time, so it
   needs **regenerating**, not merely adapting. Product decision required.
-- Race data says **run elevation 0 m** for Évian while the bike is 2000 m. The
-  limiter analysis rests on it. Almost certainly wrong; ask, never guess.
-- §3.4 test injection is scored but not yet scheduled into the plan.
+- Évian's **run elevation of 0 m is correct** — confirmed by the CEO. Not a
+  data error; do not "fix" it.
+- CSS cannot be re-established automatically: a real test needs 400 m and 200 m
+  splits that Strava's summary feed does not carry. Needs manual entry, or
+  Garmin/FIT parsing.
+- FTP is derived from average power over the whole test rather than the
+  isolated 20-minute block, so it is conservative. Interval-level data would
+  sharpen it.
 - The solver may move a session onto a day that already holds a "Rest" entry,
   which reads oddly even though rest carries no load.
 - Anchor sessions are never set — `isAnchor` defaults false, so nothing is
