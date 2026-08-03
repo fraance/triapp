@@ -55,6 +55,13 @@ import {
   distancesFor,
   describeLimiters,
 } from "../lib/adaptation/limiter";
+import {
+  thresholdConfidence,
+  buildThresholdReport,
+  metabolicState,
+  metabolicEngine,
+  RPE_CONFIDENCE_FLOOR,
+} from "../lib/adaptation/physiology";
 import { MIN_CHRONIC_HISTORY_DAYS } from "../lib/adaptation/guardrails";
 import {
   weeklyHoursFrom,
@@ -739,6 +746,101 @@ async function main() {
   check("rest days are never anchored", !anchors.includes("e"));
   check("anchoring is deterministic",
     JSON.stringify(anchors) === JSON.stringify(selectAnchors(anchorInput)));
+
+  // ======================================================================
+  console.log("\nv3 §2.1 — threshold confidence decays:");
+
+  const nowRef = new Date("2026-08-02T09:00:00");
+  const daysAgo = (n: number) => new Date(nowRef.getTime() - n * 86400000);
+
+  const freshFtp = thresholdConfidence("ftp", 250, [{ at: daysAgo(2) }], nowRef);
+  const staleFtp = thresholdConfidence("ftp", 250, [{ at: daysAgo(150) }], nowRef);
+  check("a freshly measured threshold is trusted", freshFtp.confidence > 0.9,
+    String(freshFtp.confidence));
+  check("a five-month-old threshold is not", staleFtp.confidence < RPE_CONFIDENCE_FLOOR,
+    String(staleFtp.confidence));
+  check("a stale threshold is prescribed by feel instead", staleFtp.useRpe);
+  check("and a test is scheduled", staleFtp.needsTest);
+  check("a fresh threshold needs no test", !freshFtp.needsTest);
+  check("confidence falls monotonically with age",
+    thresholdConfidence("ftp", 250, [{ at: daysAgo(10) }], nowRef).confidence >
+      thresholdConfidence("ftp", 250, [{ at: daysAgo(40) }], nowRef).confidence);
+
+  check("swim CSS decays more slowly than FTP — technique holds",
+    thresholdConfidence("css", 90, [{ at: daysAgo(60) }], nowRef).confidence >
+      thresholdConfidence("ftp", 250, [{ at: daysAgo(60) }], nowRef).confidence);
+  check("max HR barely decays at all — it is close to a fixed trait",
+    thresholdConfidence("maxHr", 190, [{ at: daysAgo(120) }], nowRef).confidence > 0.7);
+
+  const corroborated = thresholdConfidence("ftp", 250,
+    [{ at: daysAgo(30) }, { at: daysAgo(20) }, { at: daysAgo(10) }, { at: daysAgo(5) }],
+    nowRef);
+  const alone = thresholdConfidence("ftp", 250, [{ at: daysAgo(5) }], nowRef);
+  check("supporting sessions raise confidence", corroborated.confidence >= alone.confidence * 0.95);
+  check("but corroboration cannot manufacture certainty",
+    thresholdConfidence("ftp", 250,
+      Array.from({ length: 40 }, () => ({ at: daysAgo(120) })), nowRef).confidence < 0.5,
+    "a burst of sessions must not revive a long-dead number");
+
+  check("a threshold we never measured has zero confidence, not a default",
+    thresholdConfidence("ftp", null, [], nowRef).confidence === 0 &&
+      thresholdConfidence("ftp", null, [], nowRef).value === null);
+  check("an undateable value is treated as untrusted, not fresh",
+    thresholdConfidence("ftp", 250, [], nowRef).confidence === 0);
+
+  const report = buildThresholdReport([freshFtp, staleFtp]);
+  check("the report names what must be prescribed by feel",
+    report.rpeOnly.includes("ftp"), JSON.stringify(report.rpeOnly));
+  check("the summary is readable", report.summary.includes("%"), report.summary);
+  check("no thresholds gives an honest empty summary",
+    buildThresholdReport([]).summary.includes("No thresholds"));
+
+  console.log("\nv3 §2.1 — metabolic state and fuelling constraints:");
+
+  const iso2 = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayISO = iso2(nowRef);
+  const yestISO = iso2(new Date(nowRef.getTime() - 86400000));
+  const lv = (n: number) => ({ metabolic: n, mechanical: 0, neuromuscular: 0, upper: 0 });
+
+  const rested = metabolicState([], nowRef);
+  check("an athlete who has not trained is fully fuelled", rested.glycogen >= 0.99,
+    String(rested.glycogen));
+  check("the state is always labelled an estimate", rested.estimated === true);
+
+  const hammered = metabolicState(
+    [{ date: yestISO, load: lv(200) }, { date: todayISO, load: lv(150) }], nowRef);
+  check("two hard days leave stores depleted", hammered.band === "depleted",
+    `${hammered.band} ${hammered.glycogen}`);
+  check("the trailing 48-hour load is reported", hammered.trailing48hLoad === 350,
+    String(hammered.trailing48hLoad));
+
+  const moderate = metabolicState([{ date: yestISO, load: lv(120) }], nowRef);
+  check("one solid day leaves stores partly restored",
+    moderate.band === "moderate" || moderate.band === "fuelled",
+    `${moderate.band} ${moderate.glycogen}`);
+  check("a rest day replenishes", moderate.glycogen > hammered.glycogen);
+  check("glycogen never goes negative",
+    metabolicState([{ date: todayISO, load: lv(9999) }], nowRef).glycogen === 0);
+
+  const depletedRules = metabolicEngine(hammered, todayISO);
+  check("depleted stores cap intensity, not volume",
+    depletedRules.constraints.some(
+      (c) => c.type === "hard" && c.kind === "max_intensity" &&
+        c.component === "neuromuscular"),
+    JSON.stringify(depletedRules.constraints.map((c) => c.kind)));
+  check("the reason explains why hard work would be wasted",
+    /without adaptation/i.test(depletedRules.constraints[0]?.reason ?? ""),
+    depletedRules.constraints[0]?.reason);
+  check("the facts record that this is estimated",
+    (depletedRules.facts as any).estimated === true);
+
+  check("a fuelled athlete is left alone",
+    metabolicEngine(rested, todayISO).constraints.length === 0);
+  check("moderate depletion is only ever a soft nudge",
+    metabolicEngine(
+      { glycogen: 0.5, trailing48hLoad: 120, band: "moderate", estimated: true, basis: "" },
+      todayISO
+    ).constraints.every((c) => c.type === "soft"));
 
   // ======================================================================
   console.log("\nEnd to end, on a throwaway account:");

@@ -149,6 +149,18 @@ export async function buildAthleteContext(userId: string): Promise<string> {
   const testText = formatTestsForPrompt(gaps.recommendedTests);
   if (testText) sections.push(testText);
 
+  // --- How much the coach may trust its own numbers (v3 §2.1) ------------
+  // A stale threshold is worse than no threshold: it produces confident,
+  // precise, wrong paces. Where confidence has decayed, the coach is told to
+  // prescribe by feel and to schedule a test rather than guess.
+  try {
+    const { thresholdReportForPrompt } = await import("./adaptation/threshold-context");
+    const trust = await thresholdReportForPrompt(userId);
+    if (trust) sections.push(trust);
+  } catch (e) {
+    console.error("Threshold confidence unavailable:", e);
+  }
+
   return sections.join("\n\n");
 }
 

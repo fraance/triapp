@@ -44,6 +44,13 @@ import {
 import { solve } from "./solver";
 import { GuardrailContext } from "./guardrails";
 import { analyseLimiters, describeLimiters, LimiterAnalysis } from "./limiter";
+import {
+  thresholdConfidence,
+  buildThresholdReport,
+  metabolicState,
+  metabolicEngine,
+  ThresholdConfidence,
+} from "./physiology";
 import { narrate } from "./narrator";
 import { startOfDay } from "../plan-dates";
 
@@ -257,9 +264,19 @@ export async function adaptPlanForUser(
   // Cross-sport swaps load the legs in ways the plan never budgeted for.
   const swap = crossSportSwapEngine(reconciled.swaps ?? [], today);
 
+  // v3 §2.1: estimated glycogen from trailing 48-hour load, as a fuelling
+  // constraint. Depleted stores do not stop training — they change what
+  // training is useful, so intensity is capped rather than volume.
+  const metabolic = metabolicState(completedLoads, now);
+  const fuelling = metabolicEngine(metabolic, today);
+
+  // v3 §2.1: how much the coach may trust its own numbers.
+  const thresholds = await thresholdReportFor(userId, now);
+
   const constraints: Constraint[] = [
     ...drift.constraints,
     ...swap.constraints,
+    ...fuelling.constraints,
     ...macro.constraints,
   ];
   const preferences: Preference[] = [
@@ -374,6 +391,12 @@ export async function adaptPlanForUser(
           ...drift.facts,
           swap: swap.facts,
           availability: describeAvailability(availability),
+          metabolic: fuelling.facts,
+          thresholds: {
+            rpeOnly: thresholds.rpeOnly,
+            testsNeeded: thresholds.testsNeeded,
+            summary: thresholds.summary,
+          },
           limiters: limiters.hasData
             ? { ranked: limiters.ranked, priority: limiters.priority }
             : null,
@@ -426,6 +449,12 @@ export async function adaptPlanForUser(
           ...drift.facts,
           swap: swap.facts,
           availability: describeAvailability(availability),
+          metabolic: fuelling.facts,
+          thresholds: {
+            rpeOnly: thresholds.rpeOnly,
+            testsNeeded: thresholds.testsNeeded,
+            summary: thresholds.summary,
+          },
           limiters: limiters.hasData
             ? { ranked: limiters.ranked, priority: limiters.priority }
             : null,
@@ -505,6 +534,12 @@ export async function adaptPlanForUser(
           ...drift.facts,
           swap: swap.facts,
           availability: describeAvailability(availability),
+          metabolic: fuelling.facts,
+          thresholds: {
+            rpeOnly: thresholds.rpeOnly,
+            testsNeeded: thresholds.testsNeeded,
+            summary: thresholds.summary,
+          },
           limiters: limiters.hasData
             ? { ranked: limiters.ranked, priority: limiters.priority }
             : null,
@@ -663,6 +698,84 @@ function dailyCeilingFrom(loads: Array<{ date: string; load: LoadVector }>): num
   }
   const busiest = Math.max(...byDay.values());
   return Math.round(busiest * 1.1);
+}
+
+/**
+ * Threshold confidence for every number the coach prescribes from.
+ *
+ * Observation dates come from real evidence: when the profile was last
+ * updated, and the athlete's actual sessions in that discipline. A threshold
+ * we cannot date is treated as untrusted rather than assumed fresh — a stale
+ * number produces confident, precise, wrong paces.
+ */
+async function thresholdReportFor(userId: string, now: Date) {
+  const [profile, activities] = await Promise.all([
+    prisma.athleteProfile.findUnique({
+      where: { userId },
+      select: {
+        ftpWatts: true,
+        swimCssSecPer100: true,
+        runThresholdPaceSec: true,
+        maxHeartRate: true,
+        thresholdHeartRate: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.stravaActivity.findMany({
+      where: { userId, startDate: { gte: addDays(startOfDay(now), -180) } },
+      select: { startDate: true, discipline: true, avgWatts: true, avgHeartRate: true },
+    }),
+  ]);
+
+  if (!profile) return buildThresholdReport([]);
+
+  const since = (discipline: string, predicate?: (a: any) => boolean) =>
+    activities
+      .filter(
+        (a) =>
+          normaliseDiscipline(a.discipline) === discipline &&
+          (predicate ? predicate(a) : true)
+      )
+      // Ordinary training corroborates a threshold, but weakly — it is not a
+      // test, and pretending otherwise would manufacture confidence.
+      .map((a) => ({ at: a.startDate, strength: 0.75 }));
+
+  // Deliberately NOT anchored on profile.updatedAt. That timestamp moves
+  // whenever any profile field is written — a prefill, an unrelated edit — so
+  // treating it as a measurement date inflates confidence in numbers nobody
+  // has actually re-established. We have no per-threshold measurement dates
+  // yet, so confidence rests only on genuinely dated training evidence.
+  const anchor: Array<{ at: Date; strength: number }> = [];
+
+  const entries: ThresholdConfidence[] = [
+    thresholdConfidence(
+      "ftp",
+      profile.ftpWatts,
+      [...anchor, ...since("bike", (a) => a.avgWatts != null)],
+      now
+    ),
+    thresholdConfidence("css", profile.swimCssSecPer100, [...anchor, ...since("swim")], now),
+    thresholdConfidence(
+      "runThreshold",
+      profile.runThresholdPaceSec,
+      [...anchor, ...since("run")],
+      now
+    ),
+    thresholdConfidence(
+      "maxHr",
+      profile.maxHeartRate,
+      [...anchor, ...activities.filter((a) => a.avgHeartRate != null).map((a) => ({ at: a.startDate, strength: 0.5 }))],
+      now
+    ),
+    thresholdConfidence(
+      "thresholdHr",
+      profile.thresholdHeartRate,
+      [...anchor, ...activities.filter((a) => a.avgHeartRate != null).map((a) => ({ at: a.startDate, strength: 0.5 }))],
+      now
+    ),
+  ];
+
+  return buildThresholdReport(entries);
 }
 
 /**
