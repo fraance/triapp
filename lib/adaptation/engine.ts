@@ -458,6 +458,23 @@ export async function adaptPlanForUser(
   // say so. Reporting "no change" here would hide a real problem behind a
   // reassuring message.
   if (result.violations.length > 0) {
+    // A plan the solver cannot rescue is not something to report and forget.
+    // Offer the athlete the rebuild, with the evidence.
+    try {
+      const { askAboutRebuild } = await import("./decisions");
+      const { rampBaselineFor } = await import("./plan-budget");
+      const weekLoad = sessions
+        .filter((s) => s.date >= today)
+        .reduce((n, s) => n + totalLoad(s.load), 0);
+      await askAboutRebuild(userId, {
+        plannedWeekLoad: weekLoad,
+        sustainableLoad: await rampBaselineFor(userId, now),
+        reason: result.violations[0],
+      });
+    } catch (e) {
+      console.error("Could not raise the rebuild decision:", e);
+    }
+
     await recordAdaptation({
       userId,
       planId: plan.id,

@@ -24,6 +24,7 @@ model User {
   suggestions         ProfileSuggestion[]
   adaptations         Adaptation[]
   reports             AthleteReport[]
+  decisions           PlanDecision[]
   availability        TrainingAvailability?
 }
 
@@ -117,6 +118,10 @@ model AthleteProfile {
   /// v3's North Star: never ask a question they have no new information to
   /// answer. Re-offering a declined test every day is exactly that.
   testPreferences Json?
+
+  /// Choices the athlete has made about how their plan is built, e.g.
+  /// { "rampRate": 0.08 } after electing to rebuild faster post-break.
+  trainingPreferences Json?
 
   pb5kSec             Int?
   pb10kSec            Int?
@@ -235,6 +240,39 @@ model RaceProfile {
 /// Something the athlete told the coach, in their own words, and what the
 /// parser made of it. Kept event-sourced like Adaptation: the raw text is the
 /// evidence, and any plan change must be traceable back to it.
+/// A judgement call the engine must not make alone.
+///
+/// Some choices are genuinely the athlete's: how hard to come back after a
+/// break, whether to rebuild a plan that no longer fits. The engine states the
+/// evidence and the options, the athlete decides, and the answer is remembered
+/// so the same question is never asked twice.
+model PlanDecision {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Stable identifier, e.g. "ramp_after_break". One open decision per kind.
+  kind     String
+  question String
+  /// Why this is being asked, in the athlete's terms.
+  context  String
+  /// [{ id, label, detail, recommended }]
+  options  Json
+  /// Numbers behind it, for the audit trail.
+  facts    Json?
+
+  /// "pending" | "answered" | "expired"
+  status   String  @default("pending")
+  answer   String?
+  answeredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, kind])
+  @@index([userId, status])
+}
+
 model AthleteReport {
   id     String @id @default(cuid())
   userId String

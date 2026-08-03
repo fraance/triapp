@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import CoachChat from "@/components/CoachChat";
+import CoachDecisions from "@/components/CoachDecisions";
 import Link from "next/link";
 
 interface DaySession {
@@ -268,6 +269,9 @@ export default function TodayPage() {
             )}
           </div>
         )}
+
+        {/* Judgement calls that are the athlete's to make, not the engine's. */}
+        <CoachDecisions onChanged={load} />
 
         {/* Tell the coach what is going on, in your own words. */}
         <div className="mb-8">

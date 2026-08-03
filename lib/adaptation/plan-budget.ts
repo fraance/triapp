@@ -16,6 +16,8 @@ export interface BudgetBasis {
   weeksOfHistory: number;
   /** They have resumed after more than a fortnight off. */
   returningFromBreak: boolean;
+  /** The ramp actually applied, after any choice the athlete has made. */
+  rampRate: number;
   hoursPerLoad: number | null;
   maxWeeklyHours: number | null;
   basis: string;
@@ -136,15 +138,38 @@ export async function buildBudgetsForUser(
     if (declared > 0) maxWeeklyHours = declared * 0.88;
   }
 
+  // The athlete's own answer about how hard to rebuild wins over the default.
+  // The engine still holds every other guardrail regardless.
+  const { preferredRampRate } = await import("./decisions");
+  const chosenRamp = await preferredRampRate(userId);
+
   const budgets = buildWeeklyBudgets({
     totalWeeks,
     recentWeeklyLoad,
     peakWeeklyLoad,
     hoursPerLoad,
     maxWeeklyHours,
-    // Coming back from time off, tissue tolerance lags fitness. Ramp slower.
-    rampRate: returningFromBreak ? 0.05 : undefined,
+    // Coming back from time off, tissue tolerance lags fitness. Ramp slower,
+    // unless the athlete has told us the break was nothing to do with injury.
+    rampRate: chosenRamp ?? (returningFromBreak ? 0.05 : undefined),
   });
+
+  // Put the judgement call to the athlete rather than quietly deciding how
+  // ambitious their comeback should be.
+  if (returningFromBreak && chosenRamp === null && budgets.length > 0) {
+    try {
+      const { askAboutComeback } = await import("./decisions");
+      await askAboutComeback(userId, {
+        recentWeeklyLoad: Math.round(recentWeeklyLoad),
+        peakWeeklyLoad: Math.round(peakWeeklyLoad),
+        weekOneLoad: budgets[0].targetLoad,
+        weekOneHours: budgets[0].targetHours,
+        weeksToRace: totalWeeks,
+      });
+    } catch (e) {
+      console.error("Could not raise the comeback decision:", e);
+    }
+  }
 
   return {
     budgets,
@@ -152,6 +177,7 @@ export async function buildBudgetsForUser(
     peakWeeklyLoad: Math.round(peakWeeklyLoad),
     weeksOfHistory: complete.length,
     returningFromBreak,
+    rampRate: chosenRamp ?? (returningFromBreak ? 0.05 : 0.08),
     hoursPerLoad,
     maxWeeklyHours,
     basis:
