@@ -23,6 +23,7 @@ import {
   ewma,
   loadVectorFor,
   normaliseDiscipline,
+  scaleLoad,
   sumLoad,
   totalLoad,
 } from "./load-vector";
@@ -258,11 +259,36 @@ export async function adaptPlanForUser(
     dailySeries(completedLoads, iso(addDays(startOfDay(now), -7)), today),
     7
   );
-  const previousWeekLoad = sumLoad(
+  // The ramp baseline is a trailing four-week average, not simply last week.
+  // A single light week — illness, travel, a deload — would otherwise cap the
+  // whole plan at 8% above an unrepresentative low, and it disagreed with the
+  // budget the plan was generated against.
+  const fourWeekTotal = sumLoad(
+    completedLoads
+      .filter((c) => c.date >= iso(addDays(startOfDay(now), -28)) && c.date < today)
+      .map((c) => c.load)
+  );
+  const lastSevenDays = sumLoad(
     completedLoads
       .filter((c) => c.date >= iso(addDays(startOfDay(now), -7)) && c.date < today)
       .map((c) => c.load)
   );
+  // Use the same baseline the plan was generated against, so the guardrail and
+  // the plan can never disagree. It handles returns from a break, which a flat
+  // four-week average does not.
+  let previousWeekLoad = totalLoad(fourWeekTotal) > 0
+    ? scaleLoad(fourWeekTotal, 0.25)
+    : lastSevenDays;
+  try {
+    const { rampBaselineFor } = await import("./plan-budget");
+    const baseline = await rampBaselineFor(userId, now);
+    if (baseline > 0) {
+      const current = totalLoad(previousWeekLoad);
+      if (current > 0) previousWeekLoad = scaleLoad(previousWeekLoad, baseline / current);
+    }
+  } catch (e) {
+    console.error("Could not load the shared ramp baseline:", e);
+  }
 
   // Compare what was planned against what was done **per day**, not per
   // discipline. Pairing like with like made the most important case invisible:

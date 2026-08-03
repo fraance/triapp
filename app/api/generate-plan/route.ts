@@ -49,9 +49,31 @@ export async function POST(req: NextRequest) {
 
     const context = contextParts.join("\n\n");
 
+    // Work the weekly load out from what the athlete has actually been doing,
+    // and hand it to the generator as a budget it cannot exceed. Without this
+    // the model invents the numbers, and a plan that starts above the ramp
+    // guardrail can never be adapted back inside it.
+    let budgets;
+    let budgetBasis: string | null = null;
+    if (userId) {
+      try {
+        const { buildBudgetsForUser } = await import("@/lib/adaptation/plan-budget");
+        const { weeksUntilRace } = await import("@/lib/ai-coach");
+        const raceDate = profile.raceDate
+          ? new Date(profile.raceDate)
+          : new Date(Date.now() + 16 * 7 * 24 * 60 * 60 * 1000);
+        const basis = await buildBudgetsForUser(userId, weeksUntilRace(raceDate));
+        budgets = basis.budgets;
+        budgetBasis = basis.basis;
+      } catch (e) {
+        console.error("Could not compute weekly budgets:", e);
+      }
+    }
+
     const { outline, weeks, totalWeeks, detailWeeks: detailed } =
       await generateTrainingPlan(profile, context, {
         detailWeeks: detailWeeks === "all" ? "all" : Number(detailWeeks) || 4,
+        budgets,
       });
 
     if (userId) {
@@ -67,6 +89,7 @@ export async function POST(req: NextRequest) {
         weeks,
         totalWeeks,
         detailWeeks: detailed,
+        budgetBasis,
         usedStravaHistory: usedHistory,
         usedDocuments,
       },

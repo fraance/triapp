@@ -1,4 +1,5 @@
 import { OpenAI } from "openai";
+import { WeekBudget, conformWeek } from "./adaptation/periodisation";
 import { mondayOfWeek } from "./plan-dates";
 
 /**
@@ -55,11 +56,34 @@ function extractJson(content: string): any {
  * the athlete can always see the shape of their season even before individual
  * sessions exist.
  */
+/**
+ * Builds the season outline.
+ *
+ * `budgets` are computed deterministically from what the athlete has actually
+ * been training (see lib/adaptation/periodisation.ts). When supplied, they are
+ * authoritative: the model writes the *character* of each week, never its
+ * magnitude. Asking an LLM for "target hours, no more than 10% jumps" and
+ * trusting the reply produced a plan 70% above the athlete's real volume,
+ * which every downstream guardrail then had to reject.
+ */
 export async function generateMacrocycle(
   profile: AthleteProfileInput,
   totalWeeks: number,
-  trainingHistory?: string
+  trainingHistory?: string,
+  budgets?: WeekBudget[]
 ): Promise<WeekOutline[]> {
+  // With budgets in hand there is nothing for the model to decide here.
+  if (budgets && budgets.length > 0) {
+    return budgets.map((b) => ({
+      week: b.week,
+      phase: b.phase,
+      focus: b.focus,
+      targetHours: b.targetHours,
+      targetTss: b.targetLoad,
+      isRaceWeek: b.isRaceWeek,
+    }));
+  }
+
   const prompt = `You are an expert triathlon coach building a season plan.
 
 Athlete: ${profile.age || "age-group"} year old ${profile.gender?.toLowerCase() || "athlete"}.
@@ -249,7 +273,11 @@ export async function generateDetailedWeeksBatched(
 export async function generateTrainingPlan(
   profile: AthleteProfileInput,
   trainingHistory?: string,
-  options: { detailWeeks?: number | "all" } = {}
+  options: {
+    detailWeeks?: number | "all";
+    /** Enforced weekly load budgets. Without these the plan is a guess. */
+    budgets?: WeekBudget[];
+  } = {}
 ) {
   const raceDate = profile.raceDate
     ? new Date(profile.raceDate)
@@ -261,12 +289,33 @@ export async function generateTrainingPlan(
   const detailWeeks =
     requested === "all" ? totalWeeks : Math.min(requested, totalWeeks);
 
-  const outline = await generateMacrocycle(profile, totalWeeks, trainingHistory);
+  const outline = await generateMacrocycle(
+    profile,
+    totalWeeks,
+    trainingHistory,
+    options.budgets
+  );
   const weeks = await generateDetailedWeeksBatched(
     profile,
     outline.slice(0, detailWeeks),
     trainingHistory
   );
 
-  return { outline, weeks, totalWeeks, detailWeeks };
+  // Verify rather than assume. The model is asked to hit each week's target
+  // and usually does, but a week that comes back over budget is scaled back
+  // proportionally — the shape it wrote is kept, the magnitude is not.
+  const targetByWeek = new Map(outline.map((o) => [o.week, o.targetTss]));
+  const conformed = weeks.map((w: any) => {
+    const target = targetByWeek.get(w.week);
+    if (!target || !Array.isArray(w.sessions)) return w;
+    const total = w.sessions.reduce((n: number, s: any) => n + (s.tss || 0), 0);
+    if (total <= target * 1.05) return w;
+    console.log(
+      `[plan] week ${w.week} came back at ${Math.round(total)} against a ` +
+        `${target} budget — scaling it back.`
+    );
+    return { ...w, sessions: conformWeek(w.sessions, target) };
+  });
+
+  return { outline, weeks: conformed, totalWeeks, detailWeeks };
 }
