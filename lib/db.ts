@@ -195,19 +195,28 @@ export async function saveFullPlan(
   }
 
   const flatSessions = weeks.flatMap((week) =>
-    week.sessions.map((s) => ({
-      planId: plan.id,
-      week: week.week,
-      phase: week.phase ?? null,
-      summary: week.summary ?? null,
-      day: s.day,
-      discipline: s.discipline,
-      type: s.type,
-      duration: s.duration,
-      tss: typeof s.tss === "number" ? s.tss : parseInt(String(s.tss)) || 0,
-      instructions: s.instructions ?? null,
-      pace: s.pace ?? null,
-    }))
+    week.sessions.map((s) => {
+      // Sessions must be born with a real calendar date. Without it the
+      // adaptation engine, which queries by scheduledDate, cannot see a
+      // freshly generated plan at all and reports the athlete has none.
+      const date = sessionDate(planStart, week.week, s.day);
+      return {
+        planId: plan.id,
+        week: week.week,
+        phase: week.phase ?? null,
+        summary: week.summary ?? null,
+        day: s.day,
+        scheduledDate: date,
+        originalDate: date,
+        discipline: s.discipline,
+        type: s.type,
+        duration: s.duration,
+        tss: typeof s.tss === "number" ? s.tss : parseInt(String(s.tss)) || 0,
+        originalTss: typeof s.tss === "number" ? s.tss : parseInt(String(s.tss)) || 0,
+        instructions: s.instructions ?? null,
+        pace: s.pace ?? null,
+      };
+    })
   );
 
   if (flatSessions.length > 0) {
