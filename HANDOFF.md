@@ -260,6 +260,10 @@ plan. That is what makes every change reproducible and explainable.
 | `guardrails.ts` | Inviolable limits — checked, never weighted |
 | `reconcile.ts` | Writes what actually happened back onto the plan |
 | `macro-planner.ts` | Weekly intent, recovery weeks, anchor selection |
+| `availability-window.ts` | Declared hours → when a session may happen (§4.3) |
+| `limiter.ts` | Race-course ROI ranking (§3.1) |
+| `physiology.ts` | Threshold confidence decay, metabolic state (§2.1) |
+| `threshold-context.ts` | Feeds confidence into the coach prompt |
 | `signals.ts` | Execution drift, missed-session salvage, fatigue pressure |
 | `solver.ts` | Deterministic beam search + scoring |
 | `engine.ts` | Orchestration, hysteresis, versioning, audit log |
@@ -374,6 +378,34 @@ Two recurring traps worth naming, both found again here:
 - Prisma treats `undefined` as "leave unchanged". `actualTss: x ?? undefined`
   could never clear a stale value.
 
+### Roadmap executed 2 Aug 2026 (P1–P3)
+
+**P1 — availability drives scheduling (§4.3).** Long sessions are pinned to
+days with enough declared time; zero-hour days take no training; every session
+must fit its day. An athlete who has declared nothing is never blocked.
+Surfaced a real bug: easing a session cut its load but not its duration, so a
+shortened session still claimed its original slot and a time constraint could
+only ever be satisfied by dropping. Duration now scales with load.
+
+**P2 — limiter analysis (§3.1).** "Time lost vs target" needs a target and we
+have no benchmark tables, so ROI is minutes saved per 5 % capability gain **on
+this course** — no invented benchmark. A goal time, when present, adds the
+pro-rata shortfall. Unmeasured disciplines are excluded and the athlete told
+why. On the CEO's data (Évian 70.3, 2000 m climbing): bike > run > swim, bike
+carrying 65 % of available gain. Anchors now follow ROI.
+
+**P3 — physiological tracking (§2.1).** Threshold confidence decays
+exponentially with quality-specific half-lives (CSS 90 d, FTP 42 d, max HR
+365 d) and rises with corroborating sessions. Below 0.4 the coach prescribes in
+RPE; below 0.5 a test is scheduled. Metabolic state estimates glycogen from
+trailing 48-hour load and caps **intensity, not volume**, when depleted.
+
+⚠️ Confidence is deliberately not anchored on `profile.updatedAt` — that moves
+on any profile write and credited thresholds nobody had re-established. There
+are **no per-threshold measurement dates in the schema**; confidence rests on
+dated training evidence only. A `thresholdsMeasuredAt` field would make this
+materially more accurate.
+
 ### Open questions for phase 2
 
 - Change minimality is not yet proven. A dry run on the CEO's real plan produced
@@ -387,11 +419,17 @@ Two recurring traps worth naming, both found again here:
 - Execution Quality (LOGIC_V2 §4.2) is not computed — we have no zone adherence
   or interval completion data from Strava summaries, only load.
 - Session priority (P1/P2/P3) from LOGIC_V2 is not modelled; only `isAnchor`.
-- Long-session allowed days are inferred (existing long-session days + weekends)
-  rather than read from the athlete's declared availability. Wire
-  `TrainingAvailability` in when per-day hours are set.
-- v3 §2.1 threshold confidence decay, §2.1 metabolic/glycogen state, §3.1
-  limiter analysis by race-course ROI, and §3.4 test injection are not built.
+- **The CEO's availability is currently MOCK data** (Mon–Thu 1h, Fri 0h, Sat 3h,
+  Sun 4h), seeded at his request while offline. His real declaration — "no time
+  constraints", long session Saturday — is preserved verbatim in the record's
+  `constraints` field and restored by:
+  `npx tsx scripts/seed-mock-availability.mts test@example.com --clear`
+- With those mock hours his existing plan does not fit (Tue needs 120 min
+  against 60 available). The plan was generated assuming unlimited time, so it
+  needs **regenerating**, not merely adapting. Product decision required.
+- Race data says **run elevation 0 m** for Évian while the bike is 2000 m. The
+  limiter analysis rests on it. Almost certainly wrong; ask, never guess.
+- §3.4 test injection is scored but not yet scheduled into the plan.
 - The solver may move a session onto a day that already holds a "Rest" entry,
   which reads oddly even though rest carries no load.
 - Anchor sessions are never set — `isAnchor` defaults false, so nothing is
