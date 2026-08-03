@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "prisma migrate deploy && next start -H 0.0.0.0",
-    "test": "tsx tests/nav.test.mts && tsx tests/plan-draft.test.mts && tsx tests/session-status.test.mts && tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts && tsx tests/scheduler.test.mts && tsx tests/adaptation.test.mts && tsx tests/reschedule.test.mts && tsx tests/coach-chat.test.mts && tsx tests/periodisation.test.mts && tsx tests/decisions.test.mts",
+    "test": "tsx tests/nav.test.mts && tsx tests/plan-draft.test.mts && tsx tests/session-status.test.mts && tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts && tsx tests/scheduler.test.mts && tsx tests/adaptation.test.mts && tsx tests/reschedule.test.mts && tsx tests/coach-chat.test.mts && tsx tests/periodisation.test.mts && tsx tests/decisions.test.mts && tsx tests/ui-data.test.mts",
     "test:persistence": "tsx tests/persistence.test.mts",
     "test:today": "tsx tests/today.test.mts",
     "test:strava": "tsx tests/strava.test.mts",
@@ -27,7 +27,8 @@
     "test:status": "tsx tests/session-status.test.mts",
     "test:coach": "tsx tests/coach-chat.test.mts",
     "test:periodisation": "tsx tests/periodisation.test.mts",
-    "test:decisions": "tsx tests/decisions.test.mts"
+    "test:decisions": "tsx tests/decisions.test.mts",
+    "test:ui": "tsx tests/ui-data.test.mts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "latest",

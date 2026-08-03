@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import Link from "next/link";
 
 const DAYS = [
   ["monHours", "Monday"],
@@ -256,6 +257,31 @@ export default function AvailabilityPage() {
                   {cap.safeNextWeekHours} h
                 </p>
               </div>
+            </div>
+          ) : null}
+
+          {/* Where the number comes from. A figure with no working shown is
+              one the athlete can neither trust nor argue with — and this one
+              decides how hard their plan is. */}
+          {cap?.hasData ? (
+            <div className="mt-4 border-t border-gray-100 pt-3">
+              <p className="text-gray-700 text-sm">{cap.basis}</p>
+              <p className="text-gray-600 text-sm mt-2">
+                &ldquo;Safe to build to&rdquo; is your recent average, or 80% of
+                your biggest week if that is higher, plus 10%. It is a ceiling on
+                how fast to grow, not a verdict on what you are capable of — a
+                month off drags the average down long before your fitness
+                follows.
+              </p>
+              <p className="text-gray-600 text-sm mt-2">
+                If this looks low to you, it probably is, and the coach would
+                rather ask than guess: check{" "}
+                <Link href="/today" className="text-indigo-700 underline">
+                  Today
+                </Link>{" "}
+                — if there is a judgement call open about how hard to rebuild,
+                answering it changes this figure and your plan with it.
+              </p>
             </div>
           ) : (
             <p className="text-gray-600">

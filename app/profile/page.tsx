@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toDateInput } from "@/lib/date-input";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { GarminConnect } from "@/components/GarminConnect";
@@ -185,7 +186,7 @@ export default function ProfilePage() {
               </label>
               <input
                 type="date"
-                value={profile.raceDate || ""}
+                value={toDateInput(profile.raceDate)}
                 onChange={(e) =>
                   setProfile({ ...profile, raceDate: e.target.value || undefined })
                 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { toDateInput } from "@/lib/date-input";
 
 const input =
   "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500";
@@ -175,7 +176,7 @@ export default function RacePage() {
               <input className={input} value={r.location ?? ""} onChange={(e) => set("location", e.target.value)} />
             </Field>
             <Field label="Race date">
-              <input type="date" className={input} value={r.raceDate ?? ""} onChange={(e) => set("raceDate", e.target.value)} />
+              <input type="date" className={input} value={toDateInput(r.raceDate)} onChange={(e) => set("raceDate", e.target.value)} />
             </Field>
             <Field label="Distance">
               <select className={input} value={r.distanceType ?? ""} onChange={(e) => set("distanceType", e.target.value)}>

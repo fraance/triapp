@@ -238,31 +238,37 @@ export default function TodayPage() {
                       </p>
                     )}
 
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setStatus(s.id, "completed")}
-                        disabled={busyId === s.id || s.status === "completed"}
-                        className="bg-green-600 text-white px-5 py-2 rounded-lg disabled:opacity-50"
-                      >
-                        {busyId === s.id ? "Saving..." : "Mark completed"}
-                      </button>
-                      <button
-                        onClick={() => setStatus(s.id, "skipped")}
-                        disabled={busyId === s.id || s.status === "skipped"}
-                        className="bg-gray-200 text-gray-800 px-5 py-2 rounded-lg disabled:opacity-50"
-                      >
-                        Skip
-                      </button>
-                      {s.status !== "planned" && (
+                    {/* Two choices only: you did it, or you're not doing it.
+                        "Skip" and "Undo" side by side read as the same thing. */}
+                    {s.status === "planned" ? (
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setStatus(s.id, "completed")}
+                          disabled={busyId === s.id}
+                          className="bg-green-600 text-white px-5 py-2 rounded-lg disabled:opacity-50"
+                        >
+                          {busyId === s.id ? "Saving…" : "Completed"}
+                        </button>
+                        <button
+                          onClick={() => setStatus(s.id, "skipped")}
+                          disabled={busyId === s.id}
+                          className="bg-gray-200 text-gray-800 px-5 py-2 rounded-lg disabled:opacity-50"
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-gray-600">
+                        {s.status === "completed" ? "Done." : "Discarded."}{" "}
                         <button
                           onClick={() => setStatus(s.id, "planned")}
                           disabled={busyId === s.id}
-                          className="text-indigo-600 px-3 py-2 rounded-lg disabled:opacity-50"
+                          className="text-indigo-600 underline disabled:opacity-50"
                         >
-                          Undo
+                          change
                         </button>
-                      )}
-                    </div>
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -277,6 +283,36 @@ export default function TodayPage() {
         <div className="mb-8">
           <CoachChat onChanged={load} />
         </div>
+
+
+        {/* Tomorrow preview */}
+        {view && view.hasPlan && (
+          <div>
+            <h2 className="text-xl font-bold text-indigo-900 mb-3">Tomorrow</h2>
+            {view.tomorrow.length === 0 ? (
+              <div className="bg-white rounded-lg shadow p-4">
+                <p className="text-gray-600">Rest day</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {view.tomorrow.map((s) => (
+                  <div
+                    key={s.id}
+                    className="bg-white rounded-lg shadow p-4 flex justify-between"
+                  >
+                    <div>
+                      <p className="font-semibold text-gray-800">
+                        {s.discipline} · {s.type}
+                      </p>
+                      <p className="text-gray-500 text-sm">{s.duration}</p>
+                    </div>
+                    <p className="text-gray-500 text-sm">TSS {s.tss}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* What the coach changed, and why. A plan that reshapes itself
             silently cannot be trusted, so every change is readable here. */}
@@ -309,35 +345,6 @@ export default function TodayPage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Tomorrow preview */}
-        {view && view.hasPlan && (
-          <div>
-            <h2 className="text-xl font-bold text-indigo-900 mb-3">Tomorrow</h2>
-            {view.tomorrow.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-4">
-                <p className="text-gray-600">Rest day</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {view.tomorrow.map((s) => (
-                  <div
-                    key={s.id}
-                    className="bg-white rounded-lg shadow p-4 flex justify-between"
-                  >
-                    <div>
-                      <p className="font-semibold text-gray-800">
-                        {s.discipline} · {s.type}
-                      </p>
-                      <p className="text-gray-500 text-sm">{s.duration}</p>
-                    </div>
-                    <p className="text-gray-500 text-sm">TSS {s.tss}</p>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>

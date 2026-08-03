@@ -36,6 +36,7 @@ interface SeasonSession {
   duration: string;
   tss: number;
   actualTss: number | null;
+  load?: { metabolic: number; mechanical: number; neuromuscular: number; upper: number };
   instructions: string;
   pace: string;
   status: string;
@@ -72,6 +73,7 @@ export default function PlanPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [openSession, setOpenSession] = useState<any>(null);
   const [draft, setDraft] = useState<DraftState>(emptyDraft({}));
 
   const load = useCallback(async () => {
@@ -116,6 +118,9 @@ export default function PlanPage() {
         actualTss: s.actualTss ?? null,
         status: s.status,
         isAnchor: s.isAnchor,
+        instructions: s.instructions,
+        pace: s.pace,
+        load: s.load,
         date: at[s.id] ?? s.date,
       }));
   }, [season, draft]);
@@ -435,7 +440,14 @@ export default function PlanPage() {
               </div>
             )}
 
+            <p className="text-gray-500 text-sm mb-2">
+              ★ marks a key session — what the week is for. The coach eases or
+              moves other sessions before it touches one of those. Tap any
+              session to see it in full; press and hold to move it.
+            </p>
+
             <PlanCalendar
+              onOpen={(sess) => setOpenSession(sess)}
               weeks={calendarWeeks}
               sessions={sessions}
               frozenUntil={season.frozenUntil}
@@ -449,6 +461,119 @@ export default function PlanPage() {
               busyWeek={busy}
             />
           </>
+        )}
+
+        {/* Full detail for a tapped session. Plain sheet rather than a modal
+            library — it only has to be readable and dismissable. */}
+        {openSession && (
+          <div
+            className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50"
+            onClick={() => setOpenSession(null)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-lg max-w-lg w-full p-5 max-h-[85vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h3 className="text-xl font-bold text-indigo-900">
+                    {openSession.discipline}
+                    {openSession.isAnchor && (
+                      <span className="text-indigo-600" title="Key session"> ★</span>
+                    )}
+                  </h3>
+                  <p className="text-gray-600">
+                    {openSession.type} · {openSession.date}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setOpenSession(null)}
+                  className="text-gray-500 px-2"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-gray-700">
+                {openSession.duration} · {openSession.tss} load
+                {openSession.actualTss != null &&
+                  openSession.actualTss !== openSession.tss && (
+                    <span className="text-gray-500">
+                      {" "}
+                      (actually {openSession.actualTss})
+                    </span>
+                  )}
+              </p>
+
+              {openSession.load && (
+                <div className="mt-3 border border-gray-200 rounded p-3">
+                  <p className="font-semibold text-gray-800 mb-1">
+                    What it costs you
+                  </p>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      <tr>
+                        <td className="text-gray-600 py-0.5">Aerobic</td>
+                        <td className="text-gray-800 text-right">
+                          {Math.round(openSession.load.metabolic)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="text-gray-600 py-0.5">
+                          Impact <span className="text-gray-400">(legs, slow to clear)</span>
+                        </td>
+                        <td className="text-gray-800 text-right">
+                          {Math.round(openSession.load.mechanical)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="text-gray-600 py-0.5">High intensity</td>
+                        <td className="text-gray-800 text-right">
+                          {Math.round(openSession.load.neuromuscular)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="text-gray-600 py-0.5">Upper body</td>
+                        <td className="text-gray-800 text-right">
+                          {Math.round(openSession.load.upper)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p className="text-gray-500 text-xs mt-2">
+                    Two sessions with the same total can cost very different
+                    things. An hour of running does roughly four times the impact
+                    of two hours on the bike — that is what the coach limits, not
+                    the headline number.
+                  </p>
+                </div>
+              )}
+
+              {openSession.isAnchor && (
+                <p className="text-indigo-700 text-sm mt-2">
+                  ★ Key session. The coach protects this one: it will ease or move
+                  anything else in the week before touching it.
+                </p>
+              )}
+
+              {openSession.instructions && (
+                <div className="mt-4">
+                  <p className="font-semibold text-gray-800 mb-1">The session</p>
+                  <p className="text-gray-700 whitespace-pre-line">
+                    {openSession.instructions}
+                  </p>
+                </div>
+              )}
+
+              {openSession.pace && (
+                <div className="mt-4">
+                  <p className="font-semibold text-gray-800 mb-1">Pace / effort</p>
+                  <p className="text-gray-700">{openSession.pace}</p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

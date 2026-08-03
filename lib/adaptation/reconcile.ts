@@ -140,12 +140,16 @@ export async function reconcilePlanWithActivities(
     let outcome: SessionOutcome;
     let actualTss: number | null = null;
     let actualLabel: string | undefined;
+    // Which activity evidences this. Without it, a session marked done is an
+    // assertion the athlete cannot check — and they were right not to trust it.
+    let matchedActivityId: string | null = null;
 
     if (match) {
       consumed.add(match.id);
       outcome = "completed";
       actualTss = match.estimatedTss;
       actualLabel = `${match.discipline} ${match.estimatedTss} TSS`;
+      matchedActivityId = match.id;
     } else {
       const other = sameDay.filter((a) => !consumed.has(a.id));
       if (other.length > 0) {
@@ -192,6 +196,7 @@ export async function reconcilePlanWithActivities(
         where: { id: s.id },
         data: {
           status: outcome,
+          sourceActivityId: matchedActivityId,
           // Must be the value itself, not `?? undefined`: Prisma treats
           // undefined as "leave unchanged", so a substituted session kept a
           // stale actualTss and the baseline stayed polluted.

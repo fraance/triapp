@@ -39,6 +39,11 @@ export interface CalendarSession {
   isAnchor: boolean;
   /** Current day in the draft, ISO yyyy-mm-dd. */
   date: string;
+  /** Carried through so tapping a session can show it in full. */
+  instructions?: string;
+  pace?: string;
+  /** Cost split by kind — impact is what a runner has to recover from. */
+  load?: { metabolic: number; mechanical: number; neuromuscular: number; upper: number };
 }
 
 export interface CalendarWeek {
@@ -118,16 +123,24 @@ export default function PlanCalendar({
   onResetWeek,
   onExpandWeek,
   busyWeek,
+  onOpen,
 }: {
   weeks: CalendarWeek[];
   /** Every session, already positioned according to the current draft. */
   sessions: CalendarSession[];
-  /** Days on or before this are committed and cannot be changed. */
+  /**
+   * The engine's commitment window. It stops the ENGINE reshuffling imminent
+   * days; it never stops the athlete. v3 §4.4 allows a manual override, and
+   * today is not the past — being unable to move today's own session was
+   * simply wrong.
+   */
   frozenUntil: string;
   dirtyWeeks: Set<number>;
   /** Days the guardrails have flagged, so the athlete can see where. */
   warningDates: Set<string>;
   onMove: (sessionId: string, toDate: string) => void;
+  /** Tapping a session opens its full detail. */
+  onOpen?: (session: CalendarSession) => void;
   onResetWeek: (week: number) => void;
   onExpandWeek: (week: number) => void;
   busyWeek: string | null;
@@ -183,7 +196,8 @@ export default function PlanCalendar({
         .elementFromPoint(e.clientX, e.clientY)
         ?.closest("[data-drop-date]") as HTMLElement | null;
       const date = el?.dataset.dropDate ?? null;
-      setHoverDate(date && date > frozenUntil ? date : null);
+      // The athlete may drop onto any day, including today.
+      setHoverDate(date ?? null);
     }
 
     function onPointerUp() {
@@ -205,7 +219,7 @@ export default function PlanCalendar({
   }, [hoverDate, onMove, endDrag, frozenUntil]);
 
   function startPress(e: React.PointerEvent, s: CalendarSession) {
-    if (isLocked(s.status) || s.date <= frozenUntil) return;
+    if (isLocked(s.status)) return;
     if (e.button !== 0 && e.pointerType === "mouse") return;
 
     const holdTimer = window.setTimeout(() => {
@@ -346,19 +360,23 @@ export default function PlanCalendar({
                               isTarget ? "text-indigo-700" : "text-gray-400"
                             }`}
                           >
-                            {isTarget
-                              ? "Drop here"
-                              : frozen
-                                ? "Committed"
-                                : "Rest day"}
+                            {isTarget ? "Drop here" : "Rest day"}
                           </p>
                         ) : (
                           items.map((s) => {
-                            const locked = isLocked(s.status) || frozen;
+                            // Only a settled session is locked. A day inside
+                            // the engine's freeze window is still the
+                            // athlete's to rearrange.
+                            const locked = isLocked(s.status);
                             return (
                               <div
                                 key={s.id}
                                 onPointerDown={(e) => startPress(e, s)}
+                                onClick={() => {
+                                  // A drag suppresses the click, so this only
+                                  // fires on a genuine tap.
+                                  if (!draggingId) onOpen?.(s);
+                                }}
                                 className={`rounded-lg border px-3 py-2 select-none ${
                                   draggingId === s.id
                                     ? "opacity-30 border-indigo-300"
@@ -369,16 +387,20 @@ export default function PlanCalendar({
                                 style={{ touchAction: locked ? "auto" : "none" }}
                                 title={
                                   locked
-                                    ? isLocked(s.status)
-                                      ? `Already ${s.status}`
-                                      : "This day is already committed"
-                                    : "Press and hold to move"
+                                    ? `Already ${s.status}`
+                                    : "Press and hold to move · tap for detail"
                                 }
                               >
                                 <p className="font-semibold text-sm text-gray-800">
                                   {s.discipline}
                                   {s.isAnchor && (
-                                    <span title="Key session"> ★</span>
+                                    <span
+                                      title="Key session: this is what the week is for. The engine will ease or move other sessions before it touches this one."
+                                      className="text-indigo-600"
+                                    >
+                                      {" "}
+                                      ★
+                                    </span>
                                   )}
                                 </p>
                                 <p className="text-xs text-indigo-600">

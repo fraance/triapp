@@ -1270,7 +1270,9 @@ async function main() {
             (r.scheduledDate
               ? `${r.scheduledDate.getFullYear()}-${String(r.scheduledDate.getMonth() + 1).padStart(2, "0")}-${String(r.scheduledDate.getDate()).padStart(2, "0")}`
               : "") === d &&
-            !r.sourceActivityId &&
+            // Exclude rows created FROM an activity; completed sessions now
+            // carry a sourceActivityId too, as evidence.
+            r.status !== "unplanned" &&
             (!discipline || r.discipline === discipline)
         )!;
       check("the completed session records what was actually done",

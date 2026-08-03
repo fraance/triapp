@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { toDateInput } from "@/lib/date-input";
 import FitnessPanel from "@/components/FitnessPanel";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -438,7 +439,7 @@ export default function AthletePage() {
                     <input type="number" className={input} value={p.cycleLengthDays ?? ""} onChange={(e) => set("cycleLengthDays", numOrNull(e.target.value))} />
                   </Field>
                   <Field label="First day of last period">
-                    <input type="date" className={input} value={p.lastPeriodStart ?? ""} onChange={(e) => set("lastPeriodStart", e.target.value)} />
+                    <input type="date" className={input} value={toDateInput(p.lastPeriodStart)} onChange={(e) => set("lastPeriodStart", e.target.value)} />
                   </Field>
                 </div>
               )}

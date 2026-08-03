@@ -11,7 +11,8 @@ import {
   planWeekOneMonday,
 } from "./plan-dates";
 import { freezeBoundary } from "./reschedule";
-import { hideGhosts, didTrain } from "./session-status";
+import { hideGhosts, hidePastNonEvents, didTrain } from "./session-status";
+import { loadVectorFor } from "./adaptation/load-vector";
 
 // User functions
 export async function createUser(email: string, password: string) {
@@ -292,6 +293,8 @@ export interface DaySession {
   tss: number;
   /** What it actually cost, once reconciled against Strava. */
   actualTss: number | null;
+  /** The Strava activity that evidences this, when it is marked as done. */
+  evidence: string | null;
   instructions: string;
   pace: string;
   status: string;
@@ -378,6 +381,7 @@ export async function getTodayView(
     duration: item.session.duration,
     tss: item.session.tss,
     actualTss: item.session.actualTss ?? null,
+    evidence: item.session.sourceActivityId ?? null,
     instructions: item.session.instructions ?? "",
     pace: item.session.pace ?? "",
     status: item.session.status,
@@ -557,6 +561,15 @@ export interface SeasonSession {
   tss: number;
   /** What it actually cost, once reconciled against Strava. */
   actualTss: number | null;
+  /** The Strava activity that evidences this, when it is marked as done. */
+  evidence: string | null;
+  /**
+   * What the session actually costs, split by kind. A single number makes a
+   * 2-hour ride and a 1-hour run look equivalent when the run does roughly
+   * four times the impact damage — which is what the athlete has to recover
+   * from, and what the engine has been reasoning about all along.
+   */
+  load: { metabolic: number; mechanical: number; neuromuscular: number; upper: number };
   instructions: string;
   pace: string;
   status: string;
@@ -629,6 +642,8 @@ export async function getSeasonView(
       duration: s.duration,
       tss: s.tss,
       actualTss: s.actualTss ?? null,
+      evidence: s.sourceActivityId ?? null,
+      load: loadVectorFor({ discipline: s.discipline, tss: s.tss, type: s.type }),
       instructions: s.instructions ?? "",
       pace: s.pace ?? "",
       status: s.status,
@@ -643,7 +658,8 @@ export async function getSeasonView(
   // this; the calendar did not, which is why the two disagreed.
   for (const [week, list] of sessionsByWeek) {
     list.sort((a, b) => a.date.localeCompare(b.date));
-    sessionsByWeek.set(week, hideGhosts(list));
+    // A past day shows what happened, not what was once intended.
+    sessionsByWeek.set(week, hidePastNonEvents(hideGhosts(list), toISODate(new Date())));
   }
 
   const outlineByWeek = new Map(plan.outline.map((o) => [o.week, o]));
