@@ -23,6 +23,7 @@ model User {
   raceProfile         RaceProfile?
   suggestions         ProfileSuggestion[]
   adaptations         Adaptation[]
+  reports             AthleteReport[]
   availability        TrainingAvailability?
 }
 
@@ -229,6 +230,32 @@ model RaceProfile {
   researchedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+/// Something the athlete told the coach, in their own words, and what the
+/// parser made of it. Kept event-sourced like Adaptation: the raw text is the
+/// evidence, and any plan change must be traceable back to it.
+model AthleteReport {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Exactly what they typed. Never overwritten.
+  rawText String
+  /// The structured reading: niggles, fatigue, unavailable sports, horizon.
+  parsed  Json
+  /// Window the report applies to, so the engine knows how long to honour it.
+  fromDate DateTime
+  toDate   DateTime
+
+  /// The engine's reply, so the conversation can be replayed.
+  reply     String?
+  /// Links to the adaptation this report caused, when it caused one.
+  adaptationId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model TrainingPlan {

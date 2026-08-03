@@ -26,9 +26,17 @@ import { scaleLoad, sumLoad, totalLoad } from "./load-vector";
 import { checkGuardrails, GuardrailContext, isKeySession } from "./guardrails";
 
 /** How many candidates survive each expansion round. */
-const BEAM_WIDTH = 12;
-/** How many rounds of moves to apply. Each round makes one change. */
-const MAX_DEPTH = 4;
+const BEAM_WIDTH = 16;
+/**
+ * How many rounds of moves to apply; each round makes one change.
+ *
+ * Raised from 4 after a real case needed more: a week sitting far above the
+ * ramp guardrail cannot be brought back inside it by four edits, and the
+ * solver was reporting the plan unfixable when it simply could not search far
+ * enough. Six is still bounded and fast — the space is a handful of legal
+ * moves over ten days.
+ */
+const MAX_DEPTH = 6;
 
 // ---- Scoring --------------------------------------------------------------
 
@@ -135,6 +143,18 @@ export function hardViolations(
       if (s.dropped) continue;
       if (!withinRange(s.date, c)) continue;
 
+      // A discipline the athlete cannot do at all in this window.
+      if (
+        c.kind === "availability" &&
+        c.disciplines &&
+        c.disciplines.some((d) => s.discipline.toLowerCase().includes(d)) &&
+        totalLoad(s.load) > 0
+      ) {
+        out.push(
+          `${s.discipline} is scheduled on ${s.date}, when you have no ${c.disciplines.join("/")}`
+        );
+      }
+
       if (c.kind === "rest_day" && totalLoad(s.load) > 0) {
         out.push(`${s.discipline} on ${s.date} breaches a required rest day`);
       }
@@ -227,6 +247,24 @@ function expand(
   const out: SolverSession[][] = [];
   const horizonDates = [...new Set(candidate.map((s) => s.date))].sort();
 
+  /**
+   * Is this session impossible where it stands, because the athlete has no
+   * access to that discipline?
+   *
+   * Long sessions are normally pinned (v3 §4.3) so the solver cannot shuffle
+   * the weekend for marginal gain. But that rule must yield to reality: if
+   * there is no bike, a four-hour ride on Tuesday cannot happen, and refusing
+   * to move it left the whole plan unsolvable and the athlete with no answer.
+   */
+  const impossible = (s: SolverSession): boolean =>
+    input.constraints.some(
+      (c) =>
+        c.kind === "availability" &&
+        c.type === "hard" &&
+        c.disciplines?.some((d) => s.discipline.toLowerCase().includes(d)) &&
+        withinRange(s.date, c)
+    );
+
   for (let i = 0; i < candidate.length; i++) {
     const s = candidate[i];
     if (s.dropped) continue;
@@ -258,7 +296,7 @@ function expand(
     // Long sessions are never moved (v3 §4.3 and the "long runs are immovable"
     // hard boundary). Real life decides when a 2-hour session can happen; the
     // solver trims weekday volume instead of shuffling the weekend.
-    for (const date of s.isLong ? [] : horizonDates) {
+    for (const date of s.isLong && !impossible(s) ? [] : horizonDates) {
       if (date === s.date) continue;
       if (date < input.today) continue;
       if (input.unavailableDates?.includes(date)) continue;
@@ -266,14 +304,26 @@ function expand(
       const room = input.availableMinutesByDate?.[date];
       if (room !== undefined && s.durationMinutes > room) continue;
       const next = clone(candidate);
-      next[i] = { ...s, date, movedFrom: origin };
+      next[i] = {
+        ...s,
+        date,
+        movedFrom: origin,
+        movedBecauseImpossible: s.isLong ? true : s.movedBecauseImpossible,
+      };
       out.push(next);
     }
 
-    // 3. Drop it — only ever legal for non-anchors, and never a long session.
-    if (!s.isAnchor && !s.isLong) {
+    // 3. Drop it. Normally forbidden for anchors and long sessions — they are
+    // the week's purpose. But "this session must survive" presumes the athlete
+    // can actually do it: an anchor ride with no bike is not a key session,
+    // it is a fiction, and protecting it left the whole week unsolvable.
+    if (impossible(s) || (!s.isAnchor && !s.isLong)) {
       const next = clone(candidate);
-      next[i] = { ...s, dropped: true };
+      next[i] = {
+        ...s,
+        dropped: true,
+        droppedBecauseImpossible: impossible(s) || undefined,
+      };
       out.push(next);
     }
   }
@@ -432,5 +482,9 @@ declare module "./types" {
     originalLoadForCap?: LoadVector;
     originalTssForCap?: number;
     originalMinutesForCap?: number;
+    /** A long session relocated only because it could not happen where it was. */
+    movedBecauseImpossible?: boolean;
+    /** Dropped only because the athlete cannot physically do it. */
+    droppedBecauseImpossible?: boolean;
   }
 }

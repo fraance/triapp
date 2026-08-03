@@ -117,7 +117,18 @@ export function freezeBoundary(now: Date): string {
  */
 export async function adaptPlanForUser(
   userId: string,
-  opts: { now?: Date; trigger?: string; dryRun?: boolean } = {}
+  opts: {
+    now?: Date;
+    trigger?: string;
+    dryRun?: boolean;
+    /**
+     * Constraints from outside the routine signal engines — currently the
+     * athlete's own reported state and logistics. They join the same pipeline
+     * as everything else, so a chat message is subject to identical guardrails.
+     */
+    extraConstraints?: Constraint[];
+    extraPreferences?: Preference[];
+  } = {}
 ): Promise<AdaptationOutcome> {
   const now = opts.now ?? new Date();
   const trigger = opts.trigger ?? "strava_sync";
@@ -293,8 +304,10 @@ export async function adaptPlanForUser(
     ...swap.constraints,
     ...fuelling.constraints,
     ...macro.constraints,
+    ...(opts.extraConstraints ?? []),
   ];
   const preferences: Preference[] = [
+    ...(opts.extraPreferences ?? []),
     ...drift.preferences,
     {
       source: "engine",
@@ -328,10 +341,20 @@ export async function adaptPlanForUser(
     0,
     ...sessions.filter((s) => s.isLong).map((s) => s.durationMinutes)
   );
+  // Every day that can actually hold a long session. The athlete's stated
+  // preferred day is a *preference*, not a restriction: treating it as the only
+  // legal day made a long session that had to move unplaceable, and the whole
+  // week unsolvable.
+  const longDates = datesThatFit(availability, today, HORIZON_DAYS, longestMinutes);
   const preferred = preferredLongDates(availability, today, HORIZON_DAYS, longestMinutes);
-  const longDates = preferred.length > 0
-    ? preferred
-    : datesThatFit(availability, today, HORIZON_DAYS, longestMinutes);
+  if (preferred.length > 0) {
+    preferences.push({
+      source: "availability",
+      reason: `You prefer your long session on ${availabilityRecord?.longSessionDay}.`,
+      key: "prefer_long_session_day",
+      weight: 2,
+    });
+  }
   const noTimeDates = unavailableDates(availability, today, HORIZON_DAYS);
 
   // v3 §3.4: schedule tests for thresholds we can no longer trust. A test

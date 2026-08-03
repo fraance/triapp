@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import CoachChat from "@/components/CoachChat";
 import Link from "next/link";
 
 interface DaySession {
@@ -267,6 +268,11 @@ export default function TodayPage() {
             )}
           </div>
         )}
+
+        {/* Tell the coach what is going on, in your own words. */}
+        <div className="mb-8">
+          <CoachChat onChanged={load} />
+        </div>
 
         {/* What the coach changed, and why. A plan that reshapes itself
             silently cannot be trusted, so every change is readable here. */}

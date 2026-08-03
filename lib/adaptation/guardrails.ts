@@ -89,7 +89,9 @@ function weeklyLoads(sessions: SolverSession[]): Map<string, LoadVector> {
   for (const start of dates) {
     const end = new Date(start + "T00:00:00");
     end.setDate(end.getDate() + 6);
-    const endISO = end.toISOString().slice(0, 10);
+    // localISO, not toISOString: converting a local midnight to UTC rolls it
+    // back a day, so the "7-day" ramp window was only covering six.
+    const endISO = localISO(end);
     const inWindow = sessions.filter(
       (s) => !s.dropped && s.date >= start && s.date <= endISO
     );
@@ -295,6 +297,9 @@ export function checkGuardrails(
   // failure, not a penalty to be traded away.
   for (const s of active) {
     if (!s.isLong) continue;
+    // A session the athlete cannot physically do had to move; the solver only
+    // relocates a long session when it is impossible where it stood.
+    if (s.movedBecauseImpossible) continue;
     if (s.movedFrom && s.movedFrom !== s.date) {
       violations.push({
         rule: "long_session_moved",
@@ -319,6 +324,9 @@ export function checkGuardrails(
 
   // ---- Anchors must survive ---------------------------------------------
   for (const s of sessions) {
+    // An anchor the athlete cannot physically perform is not being sacrificed
+    // to optimisation; it simply cannot happen.
+    if (s.droppedBecauseImpossible) continue;
     if (s.isAnchor && s.dropped) {
       violations.push({
         rule: "anchor_dropped",

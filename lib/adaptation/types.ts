@@ -80,6 +80,11 @@ export interface Constraint {
   limit?: number;
   /** Session ids this applies to, when targeted. */
   sessionIds?: string[];
+  /**
+   * Disciplines this applies to. An `availability` constraint listing "bike"
+   * means no cycling may be scheduled in the window at all.
+   */
+  disciplines?: string[];
   /** Penalty weight for soft constraints (higher = more important). */
   weight?: number;
 }
