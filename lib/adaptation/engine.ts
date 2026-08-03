@@ -36,6 +36,7 @@ import { dailyPlannedVsActual, reconcilePlanWithActivities } from "./reconcile";
 import { planNextWeek, selectAnchors, MacroState, WeekSummary } from "./macro-planner";
 import {
   weeklyHoursFrom,
+  fitsOn as fitsOnDate,
   datesThatFit,
   unavailableDates,
   preferredLongDates,
@@ -44,6 +45,9 @@ import {
 import { solve } from "./solver";
 import { GuardrailContext } from "./guardrails";
 import { analyseLimiters, describeLimiters, LimiterAnalysis } from "./limiter";
+import { getThresholdRecord, observationsFor } from "./thresholds";
+import { applyCompletedTests } from "./test-feedback";
+import { planTestInjections, protocolFor } from "./test-injection";
 import {
   thresholdConfidence,
   buildThresholdReport,
@@ -138,6 +142,16 @@ export async function adaptPlanForUser(
   // Make sure each upcoming week has key sessions the solver may not sacrifice
   // (v3 Part 3.2). Without this nothing is protected and the engine is free to
   // dismantle the week's most important workouts.
+  // A completed test must update the threshold before anything reads it,
+  // otherwise the engine spends a cycle reasoning from the number the test
+  // just replaced.
+  const testResults = opts.dryRun ? [] : await applyCompletedTests(userId, { now });
+  for (const r of testResults.filter((r) => r.applied)) {
+    console.log(
+      `[thresholds] ${r.kind}: ${r.previous ?? "none"} -> ${r.value} (${r.method})`
+    );
+  }
+
   // v3 §3.1: rank disciplines by where race time is actually won on this
   // course, so key sessions and salvage decisions follow return on investment.
   const limiters = await analyseLimitersFor(userId);
@@ -318,6 +332,19 @@ export async function adaptPlanForUser(
     ? preferred
     : datesThatFit(availability, today, HORIZON_DAYS, longestMinutes);
   const noTimeDates = unavailableDates(availability, today, HORIZON_DAYS);
+
+  // v3 §3.4: schedule tests for thresholds we can no longer trust. A test
+  // replaces a quality session rather than being added on top, so injecting
+  // one can never breach the weekly ramp.
+  if (!opts.dryRun) {
+    await injectTests(userId, plan.id, thresholds.thresholds, {
+      today,
+      raceDate: iso(plan.targetRaceDate),
+      frozenUntil: freezeBoundary(now),
+      fits: (date, minutes) =>
+        !availability.isSet || fitsOnDate(availability, date, minutes),
+    });
+  }
 
   // v3 §5 Cold Start Trap: count days we actually hold training data for.
   // Below 28 days the ACWR denominator is untrustworthy and would zero out the
@@ -701,6 +728,114 @@ function dailyCeilingFrom(loads: Array<{ date: string; load: LoadVector }>): num
 }
 
 /**
+ * Turns test-injection decisions into real sessions.
+ *
+ * The chosen session is rewritten in place rather than a new one added: the
+ * test IS the session. Its original shape is kept in `originalTss` so the
+ * change remains explainable.
+ */
+async function injectTests(
+  userId: string,
+  planId: string,
+  confidences: ThresholdConfidence[],
+  ctx: {
+    today: string;
+    raceDate: string | null;
+    frozenUntil: string;
+    fits: (date: string, minutes: number) => boolean;
+  }
+): Promise<number> {
+  const needing = confidences.filter((c) => c.needsTest);
+  if (needing.length === 0) return 0;
+
+  const equipment = await equipmentFor(userId);
+
+  const rows = await prisma.plannedSession.findMany({
+    where: {
+      planId,
+      scheduledDate: { gte: new Date(ctx.today + "T00:00:00") },
+      status: { in: ["planned", "adapted"] },
+    },
+    orderBy: { scheduledDate: "asc" },
+    select: {
+      id: true, scheduledDate: true, discipline: true, type: true, tss: true,
+      duration: true, isAnchor: true, status: true, isTest: true,
+    },
+  });
+
+  const existingTests = await prisma.plannedSession.findMany({
+    where: { planId, isTest: true },
+    select: { scheduledDate: true },
+  });
+
+  const candidates = planTestInjections(needing, {
+    today: ctx.today,
+    equipment,
+    fits: ctx.fits,
+    raceDate: ctx.raceDate,
+    frozenUntil: ctx.frozenUntil,
+    existingTestDates: existingTests
+      .map((t) => (t.scheduledDate ? iso(t.scheduledDate) : null))
+      .filter((d): d is string => d !== null),
+    slots: rows.map((r) => ({
+      id: r.id,
+      date: iso(r.scheduledDate!),
+      discipline: r.discipline,
+      type: r.type,
+      tss: r.tss,
+      durationMinutes: parseMinutes(r.duration),
+      isAnchor: r.isAnchor,
+      status: r.status,
+      isTest: r.isTest,
+    })),
+  });
+
+  for (const c of candidates) {
+    const original = rows.find((r) => r.id === c.replaceSessionId);
+    await prisma.plannedSession.update({
+      where: { id: c.replaceSessionId },
+      data: {
+        isTest: true,
+        testKind: c.protocol.kind,
+        type: "Test",
+        discipline: c.protocol.discipline,
+        duration: `${c.protocol.durationMinutes} min`,
+        tss: c.protocol.tss,
+        instructions: c.protocol.instructions,
+        purpose: `Re-establish ${c.protocol.kind}`,
+        originalTss: original?.tss ?? null,
+        adaptedAt: new Date(),
+      },
+    });
+    console.log(`[thresholds] injected ${c.protocol.name} on ${c.date}: ${c.reason}`);
+  }
+
+  return candidates.length;
+}
+
+/** What the athlete can actually measure with. */
+async function equipmentFor(userId: string) {
+  const [withPower, availability] = await Promise.all([
+    prisma.stravaActivity.count({
+      where: { userId, avgWatts: { not: null }, discipline: "Bike" },
+    }),
+    prisma.trainingAvailability.findUnique({
+      where: { userId },
+      select: { poolAccess: true },
+    }),
+  ]);
+  const withHr = await prisma.stravaActivity.count({
+    where: { userId, avgHeartRate: { not: null } },
+  });
+  return {
+    // Evidence, not assumption: a power meter is present if rides carry power.
+    powerMeter: withPower >= 3,
+    heartRateMonitor: withHr >= 3,
+    pool: availability?.poolAccess ?? false,
+  };
+}
+
+/**
  * Threshold confidence for every number the coach prescribes from.
  *
  * Observation dates come from real evidence: when the profile was last
@@ -729,50 +864,21 @@ async function thresholdReportFor(userId: string, now: Date) {
 
   if (!profile) return buildThresholdReport([]);
 
-  const since = (discipline: string, predicate?: (a: any) => boolean) =>
-    activities
-      .filter(
-        (a) =>
-          normaliseDiscipline(a.discipline) === discipline &&
-          (predicate ? predicate(a) : true)
-      )
-      // Ordinary training corroborates a threshold, but weakly — it is not a
-      // test, and pretending otherwise would manufacture confidence.
-      .map((a) => ({ at: a.startDate, strength: 0.75 }));
+  // Anchored on when each threshold was actually established, from
+  // `thresholdsMeasuredAt`. Never on profile.updatedAt, which moves on any
+  // profile write and would credit numbers nobody has re-established.
+  const record = await getThresholdRecord(userId);
 
-  // Deliberately NOT anchored on profile.updatedAt. That timestamp moves
-  // whenever any profile field is written — a prefill, an unrelated edit — so
-  // treating it as a measurement date inflates confidence in numbers nobody
-  // has actually re-established. We have no per-threshold measurement dates
-  // yet, so confidence rests only on genuinely dated training evidence.
-  const anchor: Array<{ at: Date; strength: number }> = [];
+  const dates = (d: string) =>
+    activities.filter((a) => normaliseDiscipline(a.discipline) === d).map((a) => a.startDate);
+  const hrDates = activities.filter((a) => a.avgHeartRate != null).map((a) => a.startDate);
 
   const entries: ThresholdConfidence[] = [
-    thresholdConfidence(
-      "ftp",
-      profile.ftpWatts,
-      [...anchor, ...since("bike", (a) => a.avgWatts != null)],
-      now
-    ),
-    thresholdConfidence("css", profile.swimCssSecPer100, [...anchor, ...since("swim")], now),
-    thresholdConfidence(
-      "runThreshold",
-      profile.runThresholdPaceSec,
-      [...anchor, ...since("run")],
-      now
-    ),
-    thresholdConfidence(
-      "maxHr",
-      profile.maxHeartRate,
-      [...anchor, ...activities.filter((a) => a.avgHeartRate != null).map((a) => ({ at: a.startDate, strength: 0.5 }))],
-      now
-    ),
-    thresholdConfidence(
-      "thresholdHr",
-      profile.thresholdHeartRate,
-      [...anchor, ...activities.filter((a) => a.avgHeartRate != null).map((a) => ({ at: a.startDate, strength: 0.5 }))],
-      now
-    ),
+    thresholdConfidence("ftp", profile.ftpWatts, observationsFor("ftp", record, dates("bike")), now),
+    thresholdConfidence("css", profile.swimCssSecPer100, observationsFor("css", record, dates("swim")), now),
+    thresholdConfidence("runThreshold", profile.runThresholdPaceSec, observationsFor("runThreshold", record, dates("run")), now),
+    thresholdConfidence("maxHr", profile.maxHeartRate, observationsFor("maxHr", record, hrDates), now),
+    thresholdConfidence("thresholdHr", profile.thresholdHeartRate, observationsFor("thresholdHr", record, hrDates), now),
   ];
 
   return buildThresholdReport(entries);

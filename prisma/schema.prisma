@@ -104,6 +104,13 @@ model AthleteProfile {
   runCadence          Int? // steps per minute
   runGroundContactMs  Int?
   runVerticalOscMm    Float?
+  /// When each threshold was last actually established, and how.
+  /// Shape: { "ftp": { "at": ISO, "source": "manual"|"test"|"derived" }, ... }
+  /// Confidence decay (v3 §2.1) reads these dates. Without them the engine was
+  /// falling back to `updatedAt`, which moves on any profile write and so
+  /// credited thresholds nobody had re-established.
+  thresholdsMeasuredAt Json?
+
   pb5kSec             Int?
   pb10kSec            Int?
   pbHalfSec           Int?
@@ -291,6 +298,11 @@ model PlannedSession {
   /// Links a row created from an unplanned activity back to its Strava
   /// activity, so reconciliation stays idempotent.
   sourceActivityId String?
+
+  /// A fitness test injected by the engine (v3 §3.4), and which threshold it
+  /// is meant to re-establish.
+  isTest   Boolean @default(false)
+  testKind String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

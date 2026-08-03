@@ -158,7 +158,26 @@ export async function POST(req: NextRequest) {
       console.error("Could not rescore activities:", e);
     }
 
-    return NextResponse.json({ ...profile, rescored });
+    // A threshold the athlete types in is the strongest evidence there is, and
+    // it must be dated from this moment — otherwise confidence decay has no
+    // anchor and the engine falls back to prescribing by feel. Only values
+    // that actually changed are re-dated: re-saving a profile must not make a
+    // five-month-old FTP look freshly measured.
+    let thresholdsUpdated: string[] = [];
+    try {
+      const { recordManualThresholds } = await import("@/lib/adaptation/thresholds");
+      thresholdsUpdated = await recordManualThresholds(userId, {
+        ftp: pick(body, "ftpWatts", int),
+        css: pick(body, "swimCssSecPer100", int),
+        runThreshold: pick(body, "runThresholdPaceSec", int),
+        maxHr: pick(body, "maxHeartRate", int),
+        thresholdHr: pick(body, "thresholdHeartRate", int),
+      });
+    } catch (e) {
+      console.error("Could not record threshold measurement dates:", e);
+    }
+
+    return NextResponse.json({ ...profile, rescored, thresholdsUpdated });
   } catch (error: any) {
     console.error("Error updating profile:", error);
     return NextResponse.json(

@@ -62,6 +62,19 @@ import {
   metabolicEngine,
   RPE_CONFIDENCE_FLOOR,
 } from "../lib/adaptation/physiology";
+import {
+  recordThreshold,
+  recordManualThresholds,
+  getThresholdRecord,
+  observationsFor,
+  parseRecord,
+} from "../lib/adaptation/thresholds";
+import {
+  planTestInjections,
+  protocolFor,
+  TAPER_BLACKOUT_DAYS,
+} from "../lib/adaptation/test-injection";
+import { analyseTest } from "../lib/adaptation/test-feedback";
 import { MIN_CHRONIC_HISTORY_DAYS } from "../lib/adaptation/guardrails";
 import {
   weeklyHoursFrom,
@@ -841,6 +854,145 @@ async function main() {
       { glycogen: 0.5, trailing48hLoad: 120, band: "moderate", estimated: true, basis: "" },
       todayISO
     ).constraints.every((c) => c.type === "soft"));
+
+  // ======================================================================
+  console.log("\nTest protocols never exceed what the athlete can measure:");
+
+  check("an FTP test needs a power meter",
+    protocolFor("ftp", { powerMeter: true })?.kind === "ftp");
+  check("without power, the HR equivalent is used instead",
+    protocolFor("ftp", { powerMeter: false, heartRateMonitor: true })?.kind === "thresholdHr",
+    "prescribing watts without a meter would produce a fabricated number");
+  check("with neither, no test is offered at all",
+    protocolFor("ftp", {}) === null);
+  check("a CSS test requires a pool", protocolFor("css", {}) === null);
+  check("a 5 km run test needs no equipment",
+    protocolFor("runThreshold", {})?.kind === "runThreshold");
+
+  console.log("\nTests are scheduled where they fit, and never where they harm:");
+
+  const lowFtp = {
+    kind: "ftp" as const, value: 250, confidence: 0.2, ageDays: 200,
+    useRpe: true, needsTest: true, basis: "last corroborated 200 days ago",
+  };
+  const slots = [
+    { id: "s1", date: "2026-08-05", discipline: "Bike", type: "Endurance", tss: 70,
+      durationMinutes: 90, isAnchor: false, status: "planned" },
+    { id: "s2", date: "2026-08-08", discipline: "Bike", type: "Long", tss: 120,
+      durationMinutes: 180, isAnchor: true, status: "planned" },
+  ];
+  const injCtx = {
+    today: "2026-08-02", slots, equipment: { powerMeter: true },
+    fits: () => true, raceDate: "2026-11-01" as string | null,
+  };
+
+  const injected = planTestInjections([lowFtp], injCtx);
+  check("a low-confidence threshold gets a test", injected.length === 1, JSON.stringify(injected));
+  check("the test replaces a session rather than adding one",
+    injected[0].replaceSessionId === "s1");
+  check("a key session is never sacrificed to a test",
+    injected[0].replaceSessionId !== "s2");
+  check("the athlete is told why", injected[0].reason.includes("20%"), injected[0].reason);
+
+  check("no test is scheduled into the taper",
+    planTestInjections([lowFtp], { ...injCtx, raceDate: "2026-08-10" }).length === 0,
+    `blackout is ${TAPER_BLACKOUT_DAYS} days`);
+  check("no test is scheduled on a day that cannot hold it",
+    planTestInjections([lowFtp], { ...injCtx, fits: () => false }).length === 0);
+  check("tests are not stacked on top of each other",
+    planTestInjections([lowFtp], { ...injCtx, existingTestDates: ["2026-08-06"] }).length === 0);
+  check("a trusted threshold is left alone",
+    planTestInjections(
+      [{ ...lowFtp, confidence: 0.9, needsTest: false }], injCtx).length === 0);
+  check("nothing inside the commitment window is converted",
+    planTestInjections([lowFtp], { ...injCtx, frozenUntil: "2026-08-06" }).length === 0);
+
+  console.log("\nA completed test updates the threshold:");
+
+  const ftpResult = analyseTest({
+    kind: "ftp",
+    activity: { movingTime: 4500, distance: 40000, avgWatts: 200,
+      maxHeartRate: 180, avgHeartRate: 165 },
+  });
+  check("FTP is derived from power", ftpResult?.value === 190, JSON.stringify(ftpResult));
+  check("and the method is stated", (ftpResult?.method ?? "").includes("95%"));
+
+  check("no power means no FTP is invented",
+    analyseTest({ kind: "ftp",
+      activity: { movingTime: 4500, distance: 40000, avgWatts: null,
+        maxHeartRate: 180, avgHeartRate: 165 } }) === null);
+  check("an implausible figure is rejected rather than stored",
+    analyseTest({ kind: "ftp",
+      activity: { movingTime: 4500, distance: 40000, avgWatts: 2000,
+        maxHeartRate: 180, avgHeartRate: 165 } }) === null);
+
+  const runResult = analyseTest({
+    kind: "runThreshold",
+    activity: { movingTime: 1500, distance: 5000, avgWatts: null,
+      maxHeartRate: 185, avgHeartRate: 170 },
+    bestEfforts: [{ name: "5k", elapsedTime: 1500, distance: 5000 }],
+  });
+  check("run threshold comes from the official 5 km split",
+    runResult?.value === 317, JSON.stringify(runResult));
+  check("a run that never reached 5 km yields nothing",
+    analyseTest({ kind: "runThreshold",
+      activity: { movingTime: 600, distance: 2000, avgWatts: null,
+        maxHeartRate: 180, avgHeartRate: 165 } }) === null);
+
+  check("CSS is declined rather than mislabelled",
+    analyseTest({ kind: "css",
+      activity: { movingTime: 2400, distance: 2000, avgWatts: null,
+        maxHeartRate: 150, avgHeartRate: 140 } }) === null,
+    "Strava does not expose the 400/200 splits a real CSS test needs");
+
+  check("max HR uses the peak, not the average",
+    analyseTest({ kind: "maxHr",
+      activity: { movingTime: 2400, distance: 8000, avgWatts: null,
+        maxHeartRate: 191, avgHeartRate: 150 } })?.value === 191);
+
+  console.log("\nMeasurement dates are recorded, not guessed:");
+
+  const tEmail = `thresh-${Date.now()}@test.local`;
+  const tUser = await createUser(tEmail, "pw-test-1234");
+  try {
+    const t0 = new Date("2026-08-02T09:00:00");
+    await recordThreshold(tUser.id, "ftp", 240, "manual", t0);
+    const rec = await getThresholdRecord(tUser.id);
+    check("a manual entry is dated from that moment",
+      rec.ftp?.at === t0.toISOString() && rec.ftp?.source === "manual",
+      JSON.stringify(rec.ftp));
+    const saved = await prisma.athleteProfile.findUnique({ where: { userId: tUser.id } });
+    check("and the value itself is stored", saved?.ftpWatts === 240);
+
+    const changed = await recordManualThresholds(tUser.id, { ftp: 240, css: 95 },
+      new Date("2026-08-09T09:00:00"));
+    check("re-saving an unchanged value does not re-date it",
+      !changed.includes("ftp"),
+      "a five-month-old FTP must not look fresh because a postcode was edited");
+    check("a genuinely new value is dated", changed.includes("css"));
+    const rec2 = await getThresholdRecord(tUser.id);
+    check("the untouched threshold keeps its original date",
+      rec2.ftp?.at === t0.toISOString(), rec2.ftp?.at);
+
+    await recordThreshold(tUser.id, "ftp", null, "manual", t0);
+    const rec3 = await getThresholdRecord(tUser.id);
+    check("clearing a threshold clears its provenance too",
+      rec3.ftp === undefined,
+      "a stale date beside an empty value would be worse than nothing");
+
+    const obs = observationsFor("css", rec2, [new Date("2026-08-01T09:00:00")]);
+    check("a recorded measurement anchors confidence at full strength",
+      obs[0].strength === 1, JSON.stringify(obs[0]));
+    check("training corroborates only weakly", obs[1].strength === 0.5);
+    check("a threshold with no record has no anchor",
+      observationsFor("maxHr", {}, []).length === 0);
+
+    check("malformed stored data is ignored, not trusted",
+      Object.keys(parseRecord({ ftp: "nonsense", css: { at: 123 } })).length === 0);
+  } finally {
+    await prisma.athleteProfile.deleteMany({ where: { userId: tUser.id } });
+    await prisma.user.deleteMany({ where: { id: tUser.id } });
+  }
 
   // ======================================================================
   console.log("\nEnd to end, on a throwaway account:");
