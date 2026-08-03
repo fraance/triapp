@@ -9,14 +9,20 @@ import { prisma } from "../prisma";
 import { buildBudgetsForUser } from "./plan-budget";
 import { generateTrainingPlan, weeksUntilRace } from "../ai-coach";
 import { buildAthleteContext } from "../athlete-context";
-import { saveFullPlan } from "../db";
+import { saveFullPlan, rebuildFutureSessions } from "../db";
+import { mondayOfWeek } from "../plan-dates";
 
-export async function rebuildPlan(userId: string): Promise<{ weeks: number }> {
+export async function rebuildPlan(
+  userId: string,
+  opts: { now?: Date } = {}
+): Promise<{ weeks: number; keptSessions: number; startedOver: boolean }> {
+  const now = opts.now ?? new Date();
+
   const [existing, profile] = await Promise.all([
     prisma.trainingPlan.findFirst({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      select: { targetRaceDate: true },
+      select: { targetRaceDate: true, startDate: true },
     }),
     prisma.athleteProfile.findUnique({ where: { userId } }),
   ]);
@@ -26,10 +32,15 @@ export async function rebuildPlan(userId: string): Promise<{ weeks: number }> {
     profile?.raceDate ??
     new Date(Date.now() + 16 * 7 * 86400000);
 
-  const totalWeeks = weeksUntilRace(raceDate);
+  // Keep the plan's own start date. Anchoring a rebuild to today pushed week 1
+  // forward and orphaned the week the athlete had just trained — their history
+  // stopped being part of their plan.
+  const planStart = existing?.startDate ?? mondayOfWeek(now);
+
+  const totalWeeks = weeksUntilRace(raceDate, planStart);
   if (totalWeeks < 1) throw new Error("The race date has already passed.");
 
-  const basis = await buildBudgetsForUser(userId, totalWeeks);
+  const basis = await buildBudgetsForUser(userId, totalWeeks, now);
   const context = await buildAthleteContext(userId);
 
   const result = await generateTrainingPlan(
@@ -41,7 +52,19 @@ export async function rebuildPlan(userId: string): Promise<{ weeks: number }> {
     { detailWeeks: "all", budgets: basis.budgets }
   );
 
-  await saveFullPlan(userId, raceDate, result.weeks, new Date(), result.outline);
+  // A first plan is created outright; an existing one is rebuilt from today
+  // forward, so completed training stays exactly where it is.
+  if (!existing) {
+    await saveFullPlan(userId, raceDate, result.weeks, planStart, result.outline);
+    return { weeks: totalWeeks, keptSessions: 0, startedOver: true };
+  }
 
-  return { weeks: totalWeeks };
+  const { kept } = await rebuildFutureSessions(
+    userId,
+    result.weeks,
+    result.outline,
+    now
+  );
+
+  return { weeks: totalWeeks, keptSessions: kept, startedOver: false };
 }

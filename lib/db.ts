@@ -160,6 +160,12 @@ export async function saveFullPlan(
   }>
 ) {
   // Remove old plans for this user so the newest generation is authoritative.
+  //
+  // ⚠️ This DESTROYS every past session and its history. Only acceptable when
+  // the athlete has no plan yet, or has explicitly asked to start over.
+  // Rebuilding an existing plan must use `rebuildFutureSessions`, which keeps
+  // what has already happened — training the athlete has actually done is
+  // evidence, not a draft.
   await prisma.trainingPlan.deleteMany({ where: { userId } });
 
   const currentPhase = outline?.[0]?.phase ?? weeks[0]?.phase ?? null;
@@ -225,6 +231,104 @@ export async function saveFullPlan(
   }
 
   return plan;
+}
+
+/**
+ * Rebuilds the remaining plan while leaving the past alone.
+ *
+ * A regeneration used to delete the athlete's plan outright and anchor the new
+ * week 1 to the current Monday, so a week they had just trained stopped being
+ * part of their plan and its history went with it. What they have actually done
+ * is the one thing in here that cannot be regenerated.
+ *
+ * So: the plan record and its start date survive, sessions on or after
+ * `fromDate` are replaced, and everything before it is untouched.
+ */
+export async function rebuildFutureSessions(
+  userId: string,
+  weeks: PlanWeek[],
+  outline: Array<{
+    week: number;
+    phase: string;
+    focus?: string;
+    targetHours?: number;
+    targetTss?: number;
+    isRaceWeek?: boolean;
+  }>,
+  fromDate: Date
+) {
+  const plan = await prisma.trainingPlan.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!plan) throw new Error("No plan to rebuild.");
+
+  const planStart = plan.startDate ?? mondayOfWeek(plan.createdAt);
+  const cutoff = startOfDay(fromDate);
+
+  // Only the future goes.
+  await prisma.plannedSession.deleteMany({
+    where: { planId: plan.id, scheduledDate: { gte: cutoff } },
+  });
+
+  const kept = await prisma.plannedSession.count({ where: { planId: plan.id } });
+
+  const flat = weeks.flatMap((week) =>
+    week.sessions
+      .map((s) => {
+        const date = sessionDate(planStart, week.week, s.day);
+        if (!date || date < cutoff) return null; // the past is not rewritten
+        const tss = typeof s.tss === "number" ? s.tss : parseInt(String(s.tss)) || 0;
+        return {
+          planId: plan.id,
+          week: week.week,
+          phase: week.phase ?? null,
+          summary: week.summary ?? null,
+          day: s.day,
+          scheduledDate: date,
+          originalDate: date,
+          discipline: s.discipline,
+          type: s.type,
+          duration: s.duration,
+          tss,
+          originalTss: tss,
+          instructions: s.instructions ?? null,
+          pace: s.pace ?? null,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+  );
+
+  if (flat.length > 0) {
+    await prisma.plannedSession.createMany({ data: flat });
+  }
+
+  // Week outlines are safe to replace wholesale: they carry no history.
+  if (outline.length > 0) {
+    await prisma.planWeekOutline.deleteMany({ where: { planId: plan.id } });
+    await prisma.planWeekOutline.createMany({
+      data: outline.map((w) => ({
+        planId: plan.id,
+        week: w.week,
+        phase: w.phase,
+        focus: w.focus ?? null,
+        targetHours: w.targetHours ?? null,
+        targetTss: w.targetTss ?? null,
+        isRaceWeek: Boolean(w.isRaceWeek),
+      })),
+    });
+  }
+
+  await prisma.trainingPlan.update({
+    where: { id: plan.id },
+    data: {
+      weekCount: Math.max(plan.weekCount, outline.length),
+      detailedWeeks: weeks.length,
+      currentPhase: outline[0]?.phase ?? plan.currentPhase,
+    },
+  });
+
+  return { planId: plan.id, kept, written: flat.length };
 }
 
 /**
