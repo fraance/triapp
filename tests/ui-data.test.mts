@@ -63,7 +63,8 @@ check("training you did with nothing planned is shown",
   shown.some((s) => s.id === "f"));
 check("a discarded session is not shown", !shown.some((s) => s.id === "b"),
   "it stays in the database, it just is not the athlete's history");
-check("a missed session is not shown", !shown.some((s) => s.id === "c"));
+check("a missed session is shown — the athlete must know they missed it",
+  shown.some((s) => s.id === "c"));
 check("a past day that simply went by is not shown",
   !shown.some((s) => s.id === "d"));
 check("future sessions are all still shown", shown.some((s) => s.id === "e"));

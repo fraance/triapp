@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import CoachChat from "@/components/CoachChat";
 import CoachDecisions from "@/components/CoachDecisions";
+import { Loading, PageHeader, Stat } from "@/components/ui";
 import Link from "next/link";
 
 interface DaySession {
@@ -42,6 +43,20 @@ interface TodayView {
   daysUntilRace: number | null;
   raceDate: string | null;
 }
+
+const DISCIPLINE_STYLE: Record<string, string> = {
+  Swim: "bg-sky-100 text-sky-800",
+  Bike: "bg-amber-100 text-amber-800",
+  Run: "bg-rose-100 text-rose-800",
+  Strength: "bg-violet-100 text-violet-800",
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  completed: "badge-success",
+  skipped: "badge-muted",
+  adapted: "badge-brand",
+  planned: "badge-brand",
+};
 
 export default function TodayPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -108,37 +123,21 @@ export default function TodayPage() {
   }
 
   if (authLoading || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">Loading today&apos;s session...</p>
-      </div>
-    );
+    return <Loading label="Loading today's session..." />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">Today</h1>
-          {view && <p className="text-gray-600">{prettyDate(view.date)}</p>}
-        </div>
+    <div className="page-shell">
+      <div className="page-inner-narrow">
+        <PageHeader title="Today" subtitle={view ? prettyDate(view.date) : undefined} />
 
-        {error && (
-          <div className="bg-red-100 text-red-700 px-4 py-3 rounded mb-6">
-            {error}
-          </div>
-        )}
+        {error && <div className="alert alert-danger mb-6">{error}</div>}
 
         {/* No plan yet */}
         {view && !view.hasPlan && (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-700 mb-4">
-              You don&apos;t have a training plan yet.
-            </p>
-            <Link
-              href="/profile"
-              className="inline-block bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold"
-            >
+          <div className="card card-pad p-8 text-center">
+            <p className="text-gray-700 mb-4">You don&apos;t have a training plan yet.</p>
+            <Link href="/profile" className="btn btn-primary btn-lg">
               Generate my plan
             </Link>
           </div>
@@ -146,38 +145,40 @@ export default function TodayPage() {
 
         {/* Week context */}
         {view && view.hasPlan && view.inPlanRange && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <div className="flex flex-wrap gap-6 justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Week</p>
-                <p className="text-xl font-bold text-indigo-900">
-                  {view.week} {view.phase ? `· ${view.phase}` : ""}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Week load (TSS)</p>
-                <p className="text-xl font-bold text-indigo-900">
-                  {view.weekTssCompleted} / {view.weekTssPlanned}
-                </p>
-              </div>
-              {view.daysUntilRace !== null && view.daysUntilRace >= 0 && (
-                <div>
-                  <p className="text-sm text-gray-500">Race in</p>
-                  <p className="text-xl font-bold text-indigo-900">
-                    {view.daysUntilRace} days
-                  </p>
-                </div>
+          <div className="card card-pad mb-6">
+            <div className="grid grid-cols-3 gap-4">
+              <Stat
+                label="Week"
+                value={
+                  view.week != null
+                    ? `${view.week}${view.phase ? ` · ${view.phase}` : ""}`
+                    : "—"
+                }
+              />
+              <Stat
+                label="Week load (TSS)"
+                value={`${view.weekTssCompleted} / ${view.weekTssPlanned}`}
+              />
+              {view.daysUntilRace !== null && view.daysUntilRace >= 0 ? (
+                <Stat
+                  label="Race in"
+                  value={`${view.daysUntilRace} days`}
+                />
+              ) : (
+                <Stat label="Race date" value={view.raceDate ?? "—"} />
               )}
             </div>
             {view.summary && (
-              <p className="text-gray-600 mt-4">{view.summary}</p>
+              <p className="text-gray-600 mt-4 border-t border-gray-100 pt-4">
+                {view.summary}
+              </p>
             )}
           </div>
         )}
 
         {/* Outside plan range */}
         {view && view.hasPlan && !view.inPlanRange && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="card card-pad mb-6">
             <p className="text-gray-700">
               Today falls outside your current plan&apos;s date range. You can
               review the full plan or generate a new one.
@@ -187,49 +188,42 @@ export default function TodayPage() {
 
         {/* Today's sessions */}
         {view && view.hasPlan && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-indigo-900 mb-3">
-              Today&apos;s session
-            </h2>
+          <section className="mb-8">
+            <h2 className="section-title mb-3">Today&apos;s session</h2>
 
             {view.sessions.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="card card-pad">
                 <p className="text-gray-700 font-semibold">Rest day</p>
-                <p className="text-gray-600">
-                  Nothing scheduled for today. Recover well.
-                </p>
+                <p className="text-gray-600">Nothing scheduled for today. Recover well.</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {view.sessions.map((s) => (
-                  <div key={s.id} className="bg-white rounded-lg shadow p-6">
-                    <div className="flex justify-between items-start mb-3">
+                  <article key={s.id} className="card card-pad">
+                    <div className="flex justify-between items-start mb-3 gap-4">
                       <div>
-                        <h3 className="text-2xl font-bold text-indigo-900">
-                          {s.discipline}
-                        </h3>
-                        <p className="text-indigo-600 font-semibold">{s.type}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-gray-700">{s.duration}</p>
-                        <p className="text-gray-500 text-sm">TSS {s.tss}</p>
-                        <p
-                          className={`text-sm font-semibold mt-1 ${
-                            s.status === "completed"
-                              ? "text-green-600"
-                              : s.status === "skipped"
-                                ? "text-gray-500"
-                                : "text-indigo-600"
-                          }`}
-                        >
-                          {s.status}
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`badge ${DISCIPLINE_STYLE[s.discipline] ?? "badge-muted"}`}
+                          >
+                            {s.discipline}
+                          </span>
+                          <h3 className="text-xl font-bold text-indigo-900">
+                            {s.type}
+                          </h3>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          {s.duration} · {s.tss} TSS
                         </p>
                       </div>
+                      <span className={`badge ${STATUS_BADGE[s.status] ?? "badge-muted"}`}>
+                        {s.status}
+                      </span>
                     </div>
 
                     {s.instructions && (
-                      <div className="bg-gray-50 rounded p-4 mb-3">
-                        <p className="text-gray-800">{s.instructions}</p>
+                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-3">
+                        <p className="text-gray-800 whitespace-pre-line">{s.instructions}</p>
                       </div>
                     )}
                     {s.pace && (
@@ -245,14 +239,14 @@ export default function TodayPage() {
                         <button
                           onClick={() => setStatus(s.id, "completed")}
                           disabled={busyId === s.id}
-                          className="bg-green-600 text-white px-5 py-2 rounded-lg disabled:opacity-50"
+                          className="btn btn-success"
                         >
                           {busyId === s.id ? "Saving…" : "Completed"}
                         </button>
                         <button
                           onClick={() => setStatus(s.id, "skipped")}
                           disabled={busyId === s.id}
-                          className="bg-gray-200 text-gray-800 px-5 py-2 rounded-lg disabled:opacity-50"
+                          className="btn btn-secondary"
                         >
                           Discard
                         </button>
@@ -269,11 +263,11 @@ export default function TodayPage() {
                         </button>
                       </p>
                     )}
-                  </div>
+                  </article>
                 ))}
               </div>
             )}
-          </div>
+          </section>
         )}
 
         {/* Judgement calls that are the athlete's to make, not the engine's. */}
@@ -284,13 +278,12 @@ export default function TodayPage() {
           <CoachChat onChanged={load} />
         </div>
 
-
         {/* Tomorrow preview */}
         {view && view.hasPlan && (
-          <div>
-            <h2 className="text-xl font-bold text-indigo-900 mb-3">Tomorrow</h2>
+          <section className="mb-8">
+            <h2 className="section-title mb-3">Tomorrow</h2>
             {view.tomorrow.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-4">
+              <div className="card card-pad">
                 <p className="text-gray-600">Rest day</p>
               </div>
             ) : (
@@ -298,7 +291,7 @@ export default function TodayPage() {
                 {view.tomorrow.map((s) => (
                   <div
                     key={s.id}
-                    className="bg-white rounded-lg shadow p-4 flex justify-between"
+                    className="card card-pad flex justify-between items-center gap-4"
                   >
                     <div>
                       <p className="font-semibold text-gray-800">
@@ -311,28 +304,26 @@ export default function TodayPage() {
                 ))}
               </div>
             )}
-          </div>
+          </section>
         )}
 
         {/* What the coach changed, and why. A plan that reshapes itself
             silently cannot be trusted, so every change is readable here. */}
         {adaptations.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-indigo-900 mb-3">
-              What changed
-            </h2>
+          <section className="mb-8">
+            <h2 className="section-title mb-3">What changed</h2>
             <div className="space-y-3">
               {adaptations.map((a) => (
-                <div key={a.id} className="bg-white rounded-lg shadow p-4">
+                <div key={a.id} className="card card-pad">
                   <p className="text-gray-800">{a.explanation}</p>
                   {a.changes.length > 0 && (
                     <ul className="mt-2 space-y-1">
                       {a.changes.map((c, i) => (
                         <li key={i} className="text-gray-500 text-sm">
                           {c.change === "moved" &&
-                            `${c.discipline}: ${c.fromDate} \u2192 ${c.toDate}`}
+                            `${c.discipline}: ${c.fromDate} → ${c.toDate}`}
                           {c.change === "scaled" &&
-                            `${c.discipline} on ${c.toDate ?? c.fromDate}: load ${c.fromTss} \u2192 ${c.toTss}`}
+                            `${c.discipline} on ${c.toDate ?? c.fromDate}: load ${c.fromTss} → ${c.toTss}`}
                           {c.change === "dropped" &&
                             `${c.discipline} on ${c.fromDate}: dropped`}
                         </li>
@@ -340,12 +331,12 @@ export default function TodayPage() {
                     </ul>
                   )}
                   <p className="text-gray-400 text-xs mt-2">
-                    {new Date(a.at).toLocaleString()} \u00b7 {a.trigger.replace(/_/g, " ")}
+                    {new Date(a.at).toLocaleString()} · {a.trigger.replace(/_/g, " ")}
                   </p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
       </div>
     </div>

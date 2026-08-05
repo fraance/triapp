@@ -175,7 +175,9 @@ export async function applyMoves(
   }
 
   const planStart = plan.startDate ?? plan.createdAt;
-  const frozenUntil = freezeBoundary(now);
+  // Today, as the athlete's calendar sees it. A session may be moved onto
+  // today; it may not be moved into a day that has already gone.
+  const today = isoDate(now);
   const byId = new Map(plan.sessions.map((s) => [s.id, s]));
   const rejected: MoveRejection[] = [];
 
@@ -223,18 +225,18 @@ export async function applyMoves(
       session.scheduledDate ?? nominalDate(planStart, session.week, session.day);
     const from = isoDate(currentDate);
 
-    if (from <= frozenUntil) {
+    // The commitment window (v3 §4.4) stops the ENGINE reshuffling imminent
+    // days. It was also being applied to the athlete, who may always override
+    // it by hand — and today is not the past. The UI had already been unlocked
+    // for today's session, so the server rejecting the same move left the
+    // athlete unable to save and, because the reason rendered behind the
+    // dialog, with no idea why.
+    //
+    // What remains forbidden is scheduling into a day that has gone.
+    if (move.toDate < today) {
       rejected.push({
         sessionId: move.sessionId,
-        reason: `${session.discipline} on ${from} is already committed and can't be moved.`,
-      });
-      continue;
-    }
-
-    if (move.toDate <= frozenUntil) {
-      rejected.push({
-        sessionId: move.sessionId,
-        reason: `${move.toDate} is already committed; pick a later day.`,
+        reason: `${move.toDate} has already passed — you can't plan a session into the past.`,
       });
       continue;
     }

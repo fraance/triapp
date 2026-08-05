@@ -9,7 +9,7 @@
  */
 export function GarminConnect() {
   return (
-    <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+    <div className="card card-pad bg-gray-50">
       <p className="font-semibold text-gray-800">Not connected</p>
       <p className="text-gray-600 text-sm mt-1">
         Garmin access is pending approval of our developer application. Until

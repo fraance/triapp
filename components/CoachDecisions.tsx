@@ -77,15 +77,15 @@ export default function CoachDecisions({ onChanged }: { onChanged?: () => void }
   return (
     <div className="mb-8">
       {message && (
-        <div className="bg-white border border-indigo-300 rounded p-3 mb-3">
-          <p className="text-gray-800">{message}</p>
+        <div className="alert alert-info mb-3">
+          <p>{message}</p>
         </div>
       )}
 
       {decisions.map((d) => (
         <div
           key={d.id}
-          className="bg-white rounded-lg shadow p-4 mb-3 border-l-4 border-indigo-500"
+          className="card card-pad mb-3 border-l-4 border-indigo-500"
         >
           <h2 className="text-lg font-bold text-indigo-900">{d.question}</h2>
           <p className="text-gray-700 mt-2">{d.context}</p>

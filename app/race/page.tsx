@@ -4,8 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { toDateInput } from "@/lib/date-input";
 
-const input =
-  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const input = "input";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -117,20 +116,20 @@ export default function RacePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">Your race</h1>
-          <p className="text-gray-600">
+    <div className="page-shell">
+      <div className="page-inner-narrow">
+        <header className="mb-6">
+          <h1 className="page-title">Your race</h1>
+          <p className="page-subtitle">
             The course decides the training. Tell us the race and we&apos;ll try
             to look up its demands.
           </p>
-        </div>
+        </header>
 
-        {message && <div className="bg-blue-100 text-blue-900 px-4 py-3 rounded mb-6">{message}</div>}
+        {message && <div className="alert alert-info mb-6">{message}</div>}
 
         {notFound && (
-          <div className="bg-gray-100 border border-gray-300 text-gray-800 px-4 py-3 rounded mb-6">
+          <div className="alert alert-warn mb-6">
             <strong>Race not found automatically.</strong> That&apos;s fine — smaller
             races often aren&apos;t documented online. Fill in whatever you know in
             the boxes below and leave the rest blank. Your plan will use only what
@@ -139,7 +138,7 @@ export default function RacePage() {
         )}
 
         {sources.length > 0 && !notFound && (
-          <section className="bg-white rounded-lg shadow p-6 mb-6">
+          <section className="card card-pad mb-6">
             <h2 className="text-lg font-bold text-indigo-900 mb-2">
               {usedWeb ? "Sources found on the web" : "Sources"}
             </h2>
@@ -159,14 +158,14 @@ export default function RacePage() {
         )}
 
         {(r.source === "ai_suggested" || r.source === "web_research") && !r.confirmed && (
-          <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded mb-6">
+          <div className="alert alert-warn mb-6">
             ⚠️ These values were suggested automatically and have <strong>not been
             confirmed</strong>. They may be wrong. Please check them before your
             plan relies on them.
           </div>
         )}
 
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Which race?</h2>
           <div className="grid md:grid-cols-2 gap-4 mb-4">
             <Field label="Race name" hint="e.g. Ironman 70.3 Nice">
@@ -185,7 +184,7 @@ export default function RacePage() {
               </select>
             </Field>
           </div>
-          <button onClick={research} disabled={researching} className="bg-indigo-600 text-white px-6 py-2 rounded-lg disabled:opacity-50">
+          <button onClick={research} disabled={researching} className="btn btn-primary">
             {researching ? "Looking up the course..." : "Look up this race for me"}
           </button>
           <p className="text-xs text-gray-500 mt-2">
@@ -208,7 +207,7 @@ export default function RacePage() {
           </section>
         )}
 
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Swim</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Environment">
@@ -233,7 +232,7 @@ export default function RacePage() {
           </div>
         </section>
 
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Bike course</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <Field label="Profile">
@@ -249,7 +248,7 @@ export default function RacePage() {
           </div>
         </section>
 
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Run course</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Profile">
@@ -271,7 +270,7 @@ export default function RacePage() {
           </div>
         </section>
 
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Expected conditions</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Temperature (°C)">
@@ -287,10 +286,10 @@ export default function RacePage() {
         </section>
 
         <div className="flex gap-3 mb-10">
-          <button onClick={() => save(true)} disabled={saving} className="bg-green-600 text-white px-8 py-3 rounded-lg font-semibold disabled:opacity-50">
+          <button onClick={() => save(true)} disabled={saving} className="btn btn-success btn-lg">
             {saving ? "Saving..." : "Confirm race details"}
           </button>
-          <button onClick={() => save(false)} disabled={saving} className="bg-white text-indigo-700 border border-indigo-300 px-6 py-3 rounded-lg">
+          <button onClick={() => save(false)} disabled={saving} className="btn btn-secondary btn-lg">
             Save without confirming
           </button>
         </div>

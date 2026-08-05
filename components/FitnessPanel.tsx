@@ -343,7 +343,7 @@ function ManualEntry({
           <div key={f.key}>
             <label className="block text-sm text-gray-700">{f.label}</label>
             <input
-              className="border border-gray-300 rounded px-3 py-2 w-full"
+              className="input"
               placeholder={f.hint ?? ""}
               value={entry[kind]?.[f.key] ?? ""}
               onChange={(ev) =>
@@ -361,14 +361,14 @@ function ManualEntry({
         <button
           onClick={onSubmit}
           disabled={busy}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+          className="btn btn-primary"
         >
           {busy ? "Saving…" : "Save result"}
         </button>
         <button
           onClick={onSkip}
           disabled={busy}
-          className="bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded-lg disabled:opacity-50"
+          className="btn btn-secondary"
         >
           Skip this test
         </button>

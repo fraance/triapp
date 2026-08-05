@@ -129,6 +129,17 @@ export async function adaptPlanForUser(
      */
     extraConstraints?: Constraint[];
     extraPreferences?: Preference[];
+    /**
+     * React only to the supplied constraints, ignoring the routine signal
+     * engines (drift, cross-sport swap, fuelling, macro week-cap).
+     *
+     * Used by the coach chat. When an athlete tells us "no bike for four
+     * days", the reply has to be about that — it must not silently rebuild the
+     * whole week for a pre-existing load imbalance the athlete never mentioned.
+     * The safety guardrails still apply either way; this only removes the
+     * planner's policy constraints, not the inviolable limits.
+     */
+    reportOnly?: boolean;
   } = {}
 ): Promise<AdaptationOutcome> {
   const now = opts.now ?? new Date();
@@ -325,13 +336,15 @@ export async function adaptPlanForUser(
   // v3 §2.1: how much the coach may trust its own numbers.
   const thresholds = await thresholdReportFor(userId, now);
 
-  const constraints: Constraint[] = [
-    ...drift.constraints,
-    ...swap.constraints,
-    ...fuelling.constraints,
-    ...macro.constraints,
-    ...(opts.extraConstraints ?? []),
-  ];
+  const constraints: Constraint[] = opts.reportOnly
+    ? [...(opts.extraConstraints ?? [])]
+    : [
+        ...drift.constraints,
+        ...swap.constraints,
+        ...fuelling.constraints,
+        ...macro.constraints,
+        ...(opts.extraConstraints ?? []),
+      ];
   const preferences: Preference[] = [
     ...(opts.extraPreferences ?? []),
     ...drift.preferences,

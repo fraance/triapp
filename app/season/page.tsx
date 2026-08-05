@@ -74,6 +74,7 @@ export default function PlanPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [openSession, setOpenSession] = useState<any>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState>(emptyDraft({}));
 
   const load = useCallback(async () => {
@@ -221,6 +222,7 @@ export default function PlanPage() {
 
   const save = useCallback(async (): Promise<boolean> => {
     if (!user) return false;
+    setSaveError(null);
     const moves = netMoves(draft);
     if (moves.length === 0) return true;
 
@@ -240,7 +242,9 @@ export default function PlanPage() {
         const reasons = (data.rejected ?? [])
           .map((r: any) => r.reason)
           .join(" ");
-        setMessage(reasons || data.error || "Couldn't save your changes.");
+        const why = reasons || data.error || "Couldn't save your changes.";
+        setMessage(why);
+        setSaveError(why);
         return false;
       }
 
@@ -252,7 +256,9 @@ export default function PlanPage() {
       await load();
       return true;
     } catch (e: any) {
-      setMessage(e.message || "Couldn't save your changes.");
+      const why = e.message || "Couldn't save your changes.";
+      setMessage(why);
+      setSaveError(why);
       return false;
     } finally {
       setSaving(false);
@@ -295,7 +301,7 @@ export default function PlanPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 pb-10">
+    <div className="page-shell">
       {/* Editing toolbar. Only appears once there is something to lose. */}
       {dirty && (
         <div className="sticky top-0 z-30 bg-white border-b border-indigo-200 shadow-sm">
@@ -316,7 +322,7 @@ export default function PlanPage() {
               disabled={!canUndo(draft) || saving}
               title={undoLabel(draft) ?? "Nothing to undo"}
               aria-label="Undo"
-              className="px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-40"
+              className="btn btn-secondary btn-sm"
             >
               ↶
             </button>
@@ -325,21 +331,21 @@ export default function PlanPage() {
               disabled={!canRedo(draft) || saving}
               title={redoLabel(draft) ?? "Nothing to redo"}
               aria-label="Redo"
-              className="px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-40"
+              className="btn btn-secondary btn-sm"
             >
               ↷
             </button>
             <button
               onClick={() => setDraft(discardAll)}
               disabled={saving}
-              className="ml-auto text-sm text-gray-600 px-2 py-1.5"
+              className="ml-auto btn btn-ghost btn-sm"
             >
               Discard
             </button>
             <button
               onClick={save}
               disabled={saving}
-              className="bg-indigo-600 text-white px-5 py-1.5 rounded-md font-semibold disabled:opacity-50"
+              className="btn btn-primary btn-sm"
             >
               {saving ? "Saving..." : "Save"}
             </button>
@@ -347,29 +353,17 @@ export default function PlanPage() {
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">Season plan</h1>
-          {season?.hasPlan && (
-            <p className="text-gray-600">
-              {season.totalWeeks} weeks to race day
-              {season.raceDate ? ` (${season.raceDate})` : ""} ·{" "}
-              {season.detailedWeeks} weeks detailed
-            </p>
-          )}
-          {season?.hasPlan && (
-            <p className="text-sm text-gray-500 mt-1">
-              Press and hold a session to move it to another day.
-            </p>
-          )}
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          <div className="mb-6">
+            <h1 className="page-title">Season plan</h1>
         </div>
 
         {!season?.hasPlan && (
-          <div className="bg-white rounded-lg shadow p-8 text-center">
+          <div className="card card-pad p-8 text-center">
             <p className="text-gray-700 mb-4">You don&apos;t have a plan yet.</p>
             <Link
               href="/profile"
-              className="inline-block bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold"
+              className="btn btn-primary btn-lg"
             >
               Generate my plan
             </Link>
@@ -379,9 +373,7 @@ export default function PlanPage() {
         {season?.hasPlan && (
           <>
             {message && (
-              <div className="bg-blue-100 text-blue-900 px-4 py-3 rounded mb-4">
-                {message}
-              </div>
+              <div className="alert alert-info mb-4">{message}</div>
             )}
 
             {warnings.length > 0 && (
@@ -403,7 +395,7 @@ export default function PlanPage() {
             )}
 
             {season.detailedWeeks < season.totalWeeks && (
-              <div className="bg-white rounded-lg shadow p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="card card-pad mb-4 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-gray-700">
                   {season.totalWeeks - season.detailedWeeks} of{" "}
                   {season.totalWeeks} weeks are still outline-only.
@@ -423,14 +415,14 @@ export default function PlanPage() {
                       )
                     }
                     disabled={busy !== null}
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+                    className="btn btn-primary"
                   >
                     {busy === "next4" ? "Generating..." : "Detail next 4 weeks"}
                   </button>
                   <button
                     onClick={() => expand({ all: true }, "all")}
                     disabled={busy !== null}
-                    className="bg-white text-indigo-700 border border-indigo-300 px-4 py-2 rounded-lg disabled:opacity-50"
+                    className="btn btn-secondary"
                   >
                     {busy === "all"
                       ? "Generating all weeks..."
@@ -581,6 +573,7 @@ export default function PlanPage() {
         when={dirty}
         onSave={save}
         saving={saving}
+        error={saveError}
         message="You've moved sessions around but haven't saved them yet."
       />
     </div>

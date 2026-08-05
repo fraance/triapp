@@ -14,8 +14,7 @@ const DAYS = [
   ["sunHours", "Sunday"],
 ] as const;
 
-const input =
-  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const input = "input";
 
 export default function AvailabilityPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -98,24 +97,22 @@ export default function AvailabilityPage() {
   const cap = budget?.capacity;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">
+    <div className="page-shell">
+      <div className="page-inner-narrow">
+        <header className="mb-6">
+          <h1 className="page-title">
             Your time for training
           </h1>
-          <p className="text-gray-600">
+          <p className="page-subtitle">
             How much time you <em>have</em> — not how much you currently train.
           </p>
-        </div>
+        </header>
 
         {message && (
-          <div className="bg-green-100 text-green-900 px-4 py-3 rounded mb-6">
-            {message}
-          </div>
+          <div className="alert alert-success mb-6">{message}</div>
         )}
 
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
@@ -138,11 +135,9 @@ export default function AvailabilityPage() {
           </label>
         </section>
 
-        <section
-          className={`bg-white rounded-lg shadow p-6 mb-6 ${
+        <section className={`card card-pad mb-6 ${
             form.noTimeConstraints ? "opacity-50 pointer-events-none" : ""
-          }`}
-        >
+          }`}>
           <h2 className="text-xl font-bold text-indigo-900 mb-1">
             Hours available each day
           </h2>
@@ -178,7 +173,7 @@ export default function AvailabilityPage() {
           </div>
         </section>
 
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">
             Practical constraints
           </h2>
@@ -229,7 +224,7 @@ export default function AvailabilityPage() {
         </section>
 
         {/* Capacity — derived, read-only */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-1">
             What your body is ready for
           </h2>
@@ -321,7 +316,7 @@ export default function AvailabilityPage() {
         <button
           onClick={save}
           disabled={saving}
-          className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold disabled:opacity-50 mb-10"
+          className="btn btn-primary btn-lg mb-10"
         >
           {saving ? "Saving..." : "Save my availability"}
         </button>

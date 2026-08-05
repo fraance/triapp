@@ -122,10 +122,17 @@ export function hideGhosts<T extends { status: string; date: string }>(
 /**
  * What the athlete should see for a day that has already passed.
  *
- * A past day is a record, not a plan. Sessions that never happened — skipped,
- * missed, or still sitting at "planned" because the day simply went by — are
- * noise in a calendar the athlete reads to see what they *did*. They remain in
- * the database as the intent baseline; they are only hidden from view.
+ * A past day is a record, not a plan. Sessions that were *deliberately* set
+ * aside — skipped, or still sitting at "planned" because the day simply went
+ * by — are noise in a calendar the athlete reads to see what they *did*. They
+ * remain in the database as the intent baseline; they are only hidden from
+ * view.
+ *
+ * A `missed` session is different: the day came and went with no training and
+ * nothing on record to say it was intentional. Hiding it would be the app
+ * quietly editing the athlete's history (v3 §2.4) — the same reason
+ * `hideGhosts` keeps a missed ghost on a day with no other activity. So a
+ * missed past day stays visible.
  *
  * Today is deliberately not treated as past: it is still in play.
  */
@@ -136,7 +143,9 @@ export function hidePastNonEvents<T extends { status: string; date: string }>(
   return sessions.filter((s) => {
     if (s.date >= today) return true;
     if (didTrain(s.status)) return true;
-    // Nothing happened on a past day: don't show it.
+    // `missed` is a settled, non-achieving record the athlete must still see.
+    if (s.status === "missed") return true;
+    // A past skipped/planned day: nothing actually happened, don't show it.
     return false;
   });
 }

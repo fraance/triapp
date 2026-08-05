@@ -11,12 +11,12 @@
  * be explained months later.
  */
 import { prisma } from "../prisma";
+import OpenAI from "openai";
 import { parseAthleteMessage, ParsedReport } from "./intent-parser";
 import { assessRisk, RiskAssessment } from "./risk";
 import { planOpportunity, OpportunityPlan } from "./opportunity";
 import { adaptPlanForUser, AdaptationOutcome } from "./engine";
 import { localISO } from "./load-vector";
-import { narrate } from "./narrator";
 
 export interface CoachReply {
   understood: boolean;
@@ -30,6 +30,98 @@ export interface CoachReply {
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/** A compact snapshot of the coming week, so the coach answers from the real plan. */
+async function upcomingPlan(userId: string, now: Date): Promise<{
+  hasPlan: boolean;
+  raceDate: string | null;
+  daysToRace: number | null;
+  sessions: Array<{
+    date: string;
+    day: string;
+    discipline: string;
+    type: string;
+    duration: string;
+    tss: number;
+    isAnchor: boolean;
+    status: string;
+  }>;
+}> {
+  const [plan, profile] = await Promise.all([
+    prisma.trainingPlan.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, targetRaceDate: true },
+    }),
+    prisma.athleteProfile.findUnique({
+      where: { userId },
+      select: { raceDate: true },
+    }),
+  ]);
+
+  const raceDate = plan?.targetRaceDate ?? profile?.raceDate ?? null;
+  const daysToRace = raceDate
+    ? Math.round(
+        (startOfDay(raceDate).getTime() - startOfDay(now).getTime()) / 86400000
+      )
+    : null;
+
+  if (!plan)
+    return {
+      hasPlan: false,
+      raceDate: raceDate ? localISO(raceDate) : null,
+      daysToRace,
+      sessions: [],
+    };
+
+  const rows = await prisma.plannedSession.findMany({
+    where: {
+      planId: plan.id,
+      scheduledDate: { gte: startOfDay(now), lte: addDays(startOfDay(now), 6) },
+      status: { in: ["planned", "adapted"] },
+    },
+    orderBy: { scheduledDate: "asc" },
+    select: {
+      scheduledDate: true,
+      discipline: true,
+      type: true,
+      duration: true,
+      tss: true,
+      isAnchor: true,
+      status: true,
+    },
+  });
+
+  return {
+    hasPlan: true,
+    raceDate: raceDate ? localISO(raceDate) : null,
+    daysToRace,
+    sessions: rows.map((r) => ({
+      date: localISO(r.scheduledDate!),
+      day: WEEKDAYS[r.scheduledDate!.getDay()],
+      discipline: r.discipline,
+      type: r.type,
+      duration: r.duration,
+      tss: r.tss,
+      isAnchor: r.isAnchor,
+      status: r.status,
+    })),
+  };
 }
 
 /**
@@ -45,68 +137,95 @@ export async function handleAthleteMessage(
   const now = opts.now ?? new Date();
   const today = localISO(startOfDay(now));
 
+  // The coach needs the real plan to hand even a plain question ("should I do
+  // a brick tomorrow?"), so it is gathered before we know whether the message
+  // is a report or a question.
+  const plan = await upcomingPlan(userId, now);
+
   const parsed = await parseAthleteMessage(text, today);
 
+  // ---- A question, or anything with nothing actionable -------------------
+  // The engine decides plan changes; a question changes nothing. But the reply
+  // must still read like a coach answering a coach — not a validation error.
   if (parsed.empty) {
-    return {
+    const fallback =
+      "I could not find anything in that I can act on. " +
+      "Tell me how you are feeling, or what you will not have access to and " +
+      "for how long — for example \u201cno bike until Thursday\u201d or " +
+      "\u201cslept badly, left calf is sore\u201d.";
+    const reply = await composeCoachReply({
+      text,
+      today,
       understood: false,
-      reply:
-        "I could not find anything in that I can act on. Tell me how you are " +
-        "feeling, or what you will not have access to and for how long — " +
-        "for example \u201cno bike until Thursday\u201d or \u201cslept badly, " +
-        "left calf is sore\u201d.",
       parsed,
       risk: null,
       opportunity: null,
       outcome: null,
-      reportId: null,
+      plan,
+      fallback,
+    });
+
+    let reportId: string | null = null;
+    if (!opts.dryRun) {
+      const row = await prisma.athleteReport.create({
+        data: {
+          userId,
+          rawText: text,
+          parsed: JSON.parse(JSON.stringify(parsed)),
+          fromDate: new Date(today + "T00:00:00"),
+          toDate: new Date(today + "T00:00:00"),
+          reply,
+        },
+      });
+      reportId = row.id;
+    }
+
+    return {
+      understood: false,
+      reply,
+      parsed,
+      risk: null,
+      opportunity: null,
+      outcome: null,
+      reportId,
     };
   }
 
-  // ---- Gather the state the two functions need --------------------------
-  const [plan, profile] = await Promise.all([
-    prisma.trainingPlan.findFirst({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, targetRaceDate: true },
-    }),
-    prisma.athleteProfile.findUnique({
-      where: { userId },
-      select: { raceDate: true },
-    }),
-  ]);
-
-  const raceDate = plan?.targetRaceDate ?? profile?.raceDate ?? null;
-  const daysToRace = raceDate
-    ? Math.round((startOfDay(raceDate).getTime() - startOfDay(now).getTime()) / 86400000)
-    : null;
+  const daysToRace = plan.daysToRace;
 
   // Load already planned inside the constrained window, per discipline.
   const plannedByDiscipline: Record<string, number> = {};
   let mechanicalHeadroom: number | null = null;
 
-  if (plan) {
-    const windowSessions = await prisma.plannedSession.findMany({
-      where: {
-        planId: plan.id,
-        scheduledDate: {
-          gte: new Date(parsed.fromDate + "T00:00:00"),
-          lte: new Date(parsed.toDate + "T23:59:59"),
-        },
-        status: { in: ["planned", "adapted"] },
-      },
-      select: { discipline: true, tss: true },
+  {
+    const planRow = await prisma.trainingPlan.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
     });
-    for (const s of windowSessions) {
-      const key = s.discipline.toLowerCase();
-      const d = key.includes("swim")
-        ? "swim"
-        : key.includes("bike") || key.includes("ride")
-          ? "bike"
-          : key.includes("run")
-            ? "run"
-            : "strength";
-      plannedByDiscipline[d] = (plannedByDiscipline[d] ?? 0) + s.tss;
+    if (planRow) {
+      const windowSessions = await prisma.plannedSession.findMany({
+        where: {
+          planId: planRow.id,
+          scheduledDate: {
+            gte: new Date(parsed.fromDate + "T00:00:00"),
+            lte: new Date(parsed.toDate + "T23:59:59"),
+          },
+          status: { in: ["planned", "adapted"] },
+        },
+        select: { discipline: true, tss: true },
+      });
+      for (const s of windowSessions) {
+        const key = s.discipline.toLowerCase();
+        const d = key.includes("swim")
+          ? "swim"
+          : key.includes("bike") || key.includes("ride")
+            ? "bike"
+            : key.includes("run")
+              ? "run"
+              : "strength";
+        plannedByDiscipline[d] = (plannedByDiscipline[d] ?? 0) + s.tss;
+      }
     }
   }
 
@@ -141,19 +260,29 @@ export async function handleAthleteMessage(
   }
 
   // ---- Re-plan -----------------------------------------------------------
-  const outcome = plan
+  // reportOnly: answer the message, not the whole week's load balance.
+  const outcome = plan.hasPlan
     ? await adaptPlanForUser(userId, {
         now,
         trigger: "athlete_report",
         dryRun: opts.dryRun,
+        reportOnly: true,
         extraConstraints: [...risk.constraints, ...opportunity.constraints],
         extraPreferences: opportunity.preferences,
       })
     : null;
 
   // ---- Reply -------------------------------------------------------------
-  const reply = await composeReply({
-    parsed, risk, opportunity, outcome, daysToRace,
+  const reply = await composeCoachReply({
+    text,
+    today,
+    understood: true,
+    parsed,
+    risk,
+    opportunity,
+    outcome,
+    plan,
+    fallback: deterministicReply({ risk, opportunity, outcome }),
   });
 
   if (reportId && !opts.dryRun) {
@@ -266,28 +395,23 @@ async function limiterPriorityFor(userId: string): Promise<Record<string, number
   }
 }
 
-/**
- * Composes the reply. The LLM phrases it; every fact in it was decided
- * deterministically above.
- */
-async function composeReply(args: {
-  parsed: ParsedReport;
-  risk: RiskAssessment;
-  opportunity: OpportunityPlan;
+/** What the engine decided, in plain deterministic language (the fallback). */
+function deterministicReply(args: {
+  risk: RiskAssessment | null;
+  opportunity: OpportunityPlan | null;
   outcome: AdaptationOutcome | null;
-  daysToRace: number | null;
-}): Promise<string> {
-  const { parsed, risk, opportunity, outcome } = args;
+}): string {
+  const { risk, opportunity, outcome } = args;
 
   const deterministic: string[] = [];
-  if (risk.decision === "rest") {
+  if (risk?.decision === "rest") {
     deterministic.push("Today becomes a rest day.");
-  } else if (risk.decision === "easy_only") {
+  } else if (risk?.decision === "easy_only") {
     deterministic.push("Intensity is capped until this settles — easy only.");
-  } else if (risk.decision === "downgrade") {
+  } else if (risk?.decision === "downgrade") {
     deterministic.push("Sessions are eased back.");
   }
-  deterministic.push(...opportunity.rationale);
+  deterministic.push(...(opportunity?.rationale ?? []));
   if (outcome?.changes?.length) {
     deterministic.push(
       `${outcome.changes.length} session${outcome.changes.length === 1 ? "" : "s"} moved or reshaped.`
@@ -314,24 +438,125 @@ async function composeReply(args: {
     );
   }
 
-  const fallback = deterministic.join(" ");
+  return deterministic.join(" ");
+}
 
-  // With nothing moved, the narrator's stock line would be "no changes were
-  // needed" — which hides the reasoning above. Use our own words instead.
-  if (!outcome?.changes?.length) return fallback;
+const COACH_SYSTEM_PROMPT = [
+  "You are a triathlon coach inside TriApp, talking to an age-group triathlete.",
+  "Answer naturally and conversationally, the way a good coach answers in a chat.",
+  "",
+  "Rules:",
+  "- Ground every claim in the facts given below. NEVER invent sessions, dates,",
+  "  numbers, paces, or training history.",
+  "- If the athlete asked a question, answer it directly, using the plan shown.",
+  "- If the plan was changed, explain plainly what changed and why, based only on",
+  "  the listed changes and the reasons given.",
+  "- If nothing was changed, say so naturally and, where useful, what the athlete",
+  "  can do instead.",
+  "- 2-5 sentences. Plain and direct. No cheerleading, no bullet points, no",
+  "  markdown, no emojis.",
+].join("\n");
 
-  return narrate({
-    trigger: "athlete_report",
-    constraints: [...risk.constraints, ...opportunity.constraints],
-    diff: {
-      empty: !outcome?.changes?.length,
-      changes: outcome?.changes ?? [],
-    },
-    facts: {
-      whatTheySaid: parsed,
-      riskAssessment: risk.facts,
-      opportunity: opportunity.facts,
-      decisionsAlreadyMade: deterministic,
-    },
-  }).catch(() => fallback);
+/**
+ * Composes the reply conversationally. The plan changes were decided by the
+ * deterministic engine; this LLM only phrases the answer and can handle plain
+ * questions ("should I do a brick tomorrow?") that the engine never sees.
+ */
+async function composeCoachReply(args: {
+  text: string;
+  today: string;
+  understood: boolean;
+  parsed: ParsedReport;
+  risk: RiskAssessment | null;
+  opportunity: OpportunityPlan | null;
+  outcome: AdaptationOutcome | null;
+  plan: Awaited<ReturnType<typeof upcomingPlan>>;
+  fallback: string;
+}): Promise<string> {
+  const { text, today, parsed, risk, opportunity, outcome, plan, fallback } = args;
+  if (!process.env.OPENAI_API_KEY) return fallback;
+
+  const changes = outcome?.changes ?? [];
+  const reasoned = deterministicReply({ risk, opportunity, outcome });
+
+  try {
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_tokens: 300,
+      messages: [
+        { role: "system", content: COACH_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: JSON.stringify(
+            {
+              today,
+              daysToRace: plan.daysToRace,
+              raceDate: plan.raceDate,
+              athleteSaid: text,
+              whatWeUnderstood: {
+                fatigue: parsed.fatigue,
+                sleepQuality: parsed.sleepQuality,
+                alcoholUnits: parsed.alcoholUnits,
+                stress: parsed.stress,
+                illness: parsed.illness,
+                niggles: parsed.niggles,
+                unavailableDisciplines: parsed.unavailableDisciplines,
+                availableDisciplines: parsed.availableDisciplines,
+                missingEquipment: parsed.missingEquipment,
+                window: [parsed.fromDate, parsed.toDate],
+              },
+              riskAssessment: risk
+                ? {
+                    decision: risk.decision,
+                    reasons: risk.reasons,
+                  }
+                : null,
+              logistics: opportunity
+                ? {
+                    blocked: opportunity.blocked,
+                    focus: opportunity.focus,
+                    rationale: opportunity.rationale,
+                  }
+                : null,
+              planChanges:
+                changes.length > 0
+                  ? changes.map((c) => ({
+                      discipline: c.discipline,
+                      change: c.change,
+                      fromDate: c.fromDate,
+                      toDate: c.toDate ?? undefined,
+                      fromTss: c.fromTss ?? undefined,
+                      toTss: c.toTss ?? undefined,
+                    }))
+                  : "none",
+              blockedOrUnrepairable:
+                outcome?.outcome === "blocked_frozen"
+                  ? outcome.reason
+                  : outcome?.outcome === "rejected_hysteresis"
+                    ? "A change was possible but too small to be worth disrupting the week."
+                    : null,
+              thePlan: plan.hasPlan
+                ? plan.sessions.map(
+                    (s) =>
+                      `${s.day} ${s.date}: ${s.discipline} ${s.type} ` +
+                      `(${s.duration}, ${s.tss} TSS)${s.isAnchor ? " [key]" : ""}`
+                  )
+                : "no plan",
+              whatTheEngineReasoned: reasoned,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    });
+
+    const reply = response.choices[0]?.message?.content?.trim();
+    return reply && reply.length > 0 ? reply : fallback;
+  } catch (e) {
+    console.error("[coach-chat] reply failed, using deterministic text:", e);
+    return fallback;
+  }
 }

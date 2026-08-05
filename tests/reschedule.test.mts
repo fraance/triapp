@@ -4,9 +4,10 @@
  * What must hold:
  *   1. week / day / scheduledDate always agree after a move. A session can
  *      never be in two places depending on which screen you look at.
- *   2. The commitment window is a hard boundary in BOTH directions: you cannot
- *      move a committed session, and you cannot move anything onto a committed
- *      day. Before 20:00 that's today; from 20:00 it's tomorrow too.
+ *   2. The commitment window belongs to the ENGINE, not the athlete. It stops
+ *      the coach reshuffling imminent days by itself; v3 §4.4 allows a manual
+ *      override, and today is not the past. What the athlete may never do is
+ *      schedule a session into a day that has already gone.
  *   3. A batch is all-or-nothing. One illegal move writes nothing.
  *   4. Records of what actually happened (completed, skipped, substituted) are
  *      not reschedulable.
@@ -360,32 +361,47 @@ async function main() {
         .sessions.some((s) => s.id === swimMon.id)
     );
 
-    console.log("\nThe commitment window is a hard boundary:");
-    // Pretend it is Friday 7 Aug, mid-morning: 2026-08-07 is committed.
+    console.log("\nThe athlete may override the commitment window:");
+    // Pretend it is Friday 7 Aug, mid-morning. The engine treats 2026-08-07 as
+    // committed and will not reshuffle it; the athlete still can.
     const onTheDay = new Date(2026, 7, 7, 10, 0);
-    const frozenSource = await applyMoves(
+    const movedToday = await applyMoves(
       userId,
-      [{ sessionId: runWed.id, toDate: "2026-08-09" }],
+      [{ sessionId: runWed.id, toDate: "2026-08-10" }],
       onTheDay
     );
     check(
-      "a committed session cannot be moved",
-      frozenSource.applied === false && frozenSource.rejected.length === 1
-    );
-    check(
-      "and the athlete is told why",
-      /committed/i.test(frozenSource.rejected[0]?.reason ?? ""),
-      frozenSource.rejected[0]?.reason
+      "today's own session can be moved by hand",
+      movedToday.applied === true,
+      JSON.stringify(movedToday.rejected)
     );
 
-    const frozenTarget = await applyMoves(
+    const ontoToday = await applyMoves(
       userId,
       [{ sessionId: bikeSat.id, toDate: "2026-08-07" }],
       onTheDay
     );
     check(
-      "nothing can be moved onto a committed day",
-      frozenTarget.applied === false && frozenTarget.rejected.length === 1
+      "and something can be moved onto today",
+      ontoToday.applied === true,
+      JSON.stringify(ontoToday.rejected)
+    );
+    // Put it back for the checks that follow.
+    await applyMoves(userId, [{ sessionId: bikeSat.id, toDate: "2026-08-08" }], onTheDay);
+
+    const intoThePast = await applyMoves(
+      userId,
+      [{ sessionId: bikeSat.id, toDate: "2026-08-05" }],
+      onTheDay
+    );
+    check(
+      "but nothing can be scheduled into a day that has gone",
+      intoThePast.applied === false && intoThePast.rejected.length === 1
+    );
+    check(
+      "and the athlete is told why",
+      /passed|past/i.test(intoThePast.rejected[0]?.reason ?? ""),
+      intoThePast.rejected[0]?.reason
     );
 
     console.log("\nA batch is all or nothing:");
@@ -396,7 +412,7 @@ async function main() {
       userId,
       [
         { sessionId: bikeSat.id, toDate: "2026-08-09" }, // legal
-        { sessionId: runWed.id, toDate: "2026-08-10" }, // frozen source
+        { sessionId: runWed.id, toDate: "2026-08-01" }, // into the past
       ],
       onTheDay
     );
@@ -445,6 +461,9 @@ async function main() {
     // The Saturday bike currently sits on 2026-08-08. Move it to the 9th and
     // check Today on the 9th picks it up. Today reads dates, not week/day, so
     // this is the test that would catch the two drifting apart.
+    // Make sure it starts somewhere other than Sunday, whatever earlier
+    // checks did to it, so this test asserts the move and not the setup.
+    await applyMoves(userId, [{ sessionId: bikeSat.id, toDate: "2026-08-08" }], now);
     const beforeToday = await getTodayView(userId, new Date(2026, 7, 9));
     check(
       "the bike is not on Sunday to begin with",
@@ -463,11 +482,11 @@ async function main() {
     );
 
     console.log("\nGuardrails warn but never block:");
-    // Put the Saturday bike onto the same day as the Friday run: both are key
-    // sessions, which the guardrails dislike.
+    // Put the bike onto the same day as the run, wherever it now sits: both
+    // are key sessions, which the guardrails dislike.
     const risky = await applyMoves(
       userId,
-      [{ sessionId: bikeSat.id, toDate: "2026-08-07" }],
+      [{ sessionId: bikeSat.id, toDate: "2026-08-10" }],
       now
     );
     check("the athlete's choice is still applied", risky.applied === true);

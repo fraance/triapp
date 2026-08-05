@@ -148,6 +148,10 @@ export default function PlanCalendar({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
+  /** Which weeks have their day-rows revealed. Only the current week by default. */
+  const [openWeeks, setOpenWeeks] = useState<Set<number>>(
+    () => new Set(weeks.filter((w) => w.isCurrentWeek).map((w) => w.week))
+  );
 
   // Mutable drag bookkeeping. Refs, not state, because pointermove fires far
   // too often to re-render on every event.
@@ -261,35 +265,53 @@ export default function PlanCalendar({
         return (
           <section
             key={w.week}
-            className={`bg-white rounded-lg shadow ${
+            className={`card ${
               w.isCurrentWeek ? "ring-2 ring-indigo-500" : ""
             }`}
           >
             {/* ---- Week header ---- */}
             <header className="p-4 border-b border-gray-100">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <span className="font-bold text-indigo-900">Week {w.week}</span>
-                <span
-                  className={`px-2 py-0.5 rounded text-sm font-semibold ${
-                    phaseColour[w.phase] || "bg-gray-100 text-gray-700"
-                  }`}
+              <div className="flex items-center gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenWeeks((prev) => {
+                      const next = new Set(prev);
+                      next.has(w.week) ? next.delete(w.week) : next.add(w.week);
+                      return next;
+                    })
+                  }
+                  aria-expanded={openWeeks.has(w.week)}
+                  className="flex items-center gap-2 text-left flex-1"
                 >
-                  {w.phase}
-                </span>
-                {w.isCurrentWeek && (
-                  <span className="px-2 py-0.5 rounded text-sm bg-indigo-600 text-white">
-                    This week
+                  <span className="text-gray-400 text-xs">
+                    {openWeeks.has(w.week) ? "▾" : "▸"}
                   </span>
-                )}
-                {w.isRaceWeek && <span className="text-sm">🏁 Race week</span>}
-                <span className="text-sm text-gray-500">
-                  {prettyDay(w.startDate)} – {prettyDay(days[6])}
-                </span>
+                  <span className="font-bold text-indigo-900">Week {w.week}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-sm font-semibold ${
+                      phaseColour[w.phase] || "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {w.phase}
+                  </span>
+                  {w.isCurrentWeek && (
+                    <span className="px-2 py-0.5 rounded text-sm bg-indigo-600 text-white">
+                      This week
+                    </span>
+                  )}
+                  {w.isRaceWeek && (
+                    <span className="text-sm">🏁 Race week</span>
+                  )}
+                  <span className="text-sm text-gray-500">
+                    {prettyDay(w.startDate)} – {prettyDay(days[6])}
+                  </span>
+                </button>
 
                 {dirtyWeeks.has(w.week) && (
                   <button
                     onClick={() => onResetWeek(w.week)}
-                    className="ml-auto text-sm text-indigo-700 border border-indigo-200 px-3 py-1 rounded-md"
+                    className="btn btn-secondary btn-sm"
                   >
                     Reset week
                   </button>
@@ -297,13 +319,31 @@ export default function PlanCalendar({
               </div>
 
               <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                <span>
-                  <strong className="text-indigo-900">{planned}</strong> TSS
-                  planned
-                  {w.targetTss ? (
-                    <span className="text-gray-400"> / {w.targetTss} target</span>
-                  ) : null}
-                </span>
+                {w.targetTss ? (
+                  <span className="flex items-center gap-2">
+                    <span className="relative w-32 h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <span
+                        className="absolute inset-y-0 left-0 rounded-full bg-indigo-500"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.max(0, ((w.targetTss - planned) / w.targetTss) * 100)
+                          )}%`,
+                        }}
+                      />
+                    </span>
+                    <span>
+                      <strong className="text-indigo-900">
+                        {Math.max(0, w.targetTss - planned)}
+                      </strong>{" "}
+                      remaining
+                    </span>
+                  </span>
+                ) : (
+                  <span>
+                    <strong className="text-indigo-900">{planned}</strong> TSS
+                  </span>
+                )}
                 {done > 0 && (
                   <span>
                     <strong className="text-green-700">{done}</strong> completed
@@ -320,7 +360,8 @@ export default function PlanCalendar({
             </header>
 
             {/* ---- Day rows ---- */}
-            {w.hasDetail ? (
+            {openWeeks.has(w.week) &&
+              (w.hasDetail ? (
               <div className="divide-y divide-gray-50">
                 {days.map((date, i) => {
                   const items = byDate.get(date) ?? [];
@@ -443,14 +484,14 @@ export default function PlanCalendar({
                 <button
                   onClick={() => onExpandWeek(w.week)}
                   disabled={busyWeek !== null}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg disabled:opacity-50"
+                  className="btn btn-primary"
                 >
                   {busyWeek === `week-${w.week}`
                     ? "Generating..."
                     : `Generate sessions for week ${w.week}`}
                 </button>
               </div>
-            )}
+            ))}
           </section>
         );
       })}

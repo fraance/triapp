@@ -9,13 +9,13 @@ import Link from "next/link";
  */
 export default function WorkoutsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">Garmin workouts</h1>
-        </div>
+    <div className="page-shell">
+      <div className="page-inner-narrow">
+        <header className="mb-6">
+          <h1 className="page-title">Garmin workouts</h1>
+        </header>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="card card-pad">
           <p className="font-semibold text-gray-800 mb-2">Not connected</p>
           <p className="text-gray-700 mb-4">
             Garmin access is pending approval of our developer application. No
@@ -26,7 +26,7 @@ export default function WorkoutsPage() {
           </p>
           <Link
             href="/strava"
-            className="inline-block mt-4 bg-orange-600 text-white px-5 py-2 rounded-lg"
+            className="inline-block mt-4 btn btn-primary"
           >
             View Strava data
           </Link>

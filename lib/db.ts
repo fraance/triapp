@@ -592,6 +592,12 @@ export async function addDetailedWeeks(
 ): Promise<number> {
   if (weeks.length === 0) return 0;
 
+  const plan = await prisma.trainingPlan.findUnique({
+    where: { id: planId },
+    select: { startDate: true },
+  });
+  const planStart = plan?.startDate ?? mondayOfWeek(new Date());
+
   const weekNumbers = weeks.map((w) => w.week);
 
   // Replace any existing detail for those weeks so re-generating is safe.
@@ -600,19 +606,27 @@ export async function addDetailedWeeks(
   });
 
   const rows = weeks.flatMap((week) =>
-    week.sessions.map((s) => ({
-      planId,
-      week: week.week,
-      phase: week.phase ?? null,
-      summary: week.summary ?? null,
-      day: s.day,
-      discipline: s.discipline,
-      type: s.type,
-      duration: s.duration,
-      tss: typeof s.tss === "number" ? s.tss : parseInt(String(s.tss)) || 0,
-      instructions: s.instructions ?? null,
-      pace: s.pace ?? null,
-    }))
+    week.sessions.map((s) => {
+      // Sessions must be born with a real calendar date; the adaptation engine
+      // queries by scheduledDate and cannot see undated sessions.
+      const date = sessionDate(planStart, week.week, s.day);
+      return {
+        planId,
+        week: week.week,
+        phase: week.phase ?? null,
+        summary: week.summary ?? null,
+        day: s.day,
+        scheduledDate: date,
+        originalDate: date,
+        discipline: s.discipline,
+        type: s.type,
+        duration: s.duration,
+        tss: typeof s.tss === "number" ? s.tss : parseInt(String(s.tss)) || 0,
+        originalTss: typeof s.tss === "number" ? s.tss : parseInt(String(s.tss)) || 0,
+        instructions: s.instructions ?? null,
+        pace: s.pace ?? null,
+      };
+    })
   );
 
   if (rows.length > 0) {
@@ -762,8 +776,10 @@ export async function getSeasonView(
   // this; the calendar did not, which is why the two disagreed.
   for (const [week, list] of sessionsByWeek) {
     list.sort((a, b) => a.date.localeCompare(b.date));
-    // A past day shows what happened, not what was once intended.
-    sessionsByWeek.set(week, hidePastNonEvents(hideGhosts(list), toISODate(new Date())));
+    // A past day shows what happened, not what was once intended. The view is
+    // anchored to `referenceDate` (the same one that drives `currentWeek`), so
+    // it does not silently shift as the real clock advances.
+    sessionsByWeek.set(week, hidePastNonEvents(hideGhosts(list), toISODate(referenceDate)));
   }
 
   const outlineByWeek = new Map(plan.outline.map((o) => [o.week, o]));

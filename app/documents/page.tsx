@@ -98,15 +98,15 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">
+    <div className="page-shell">
+      <div className="page-inner-narrow">
+        <header className="mb-6">
+          <h1 className="page-title">
             Context for your coach
           </h1>
-        </div>
+        </header>
 
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <div className="card card-pad mb-6">
           <p className="text-gray-700 mb-4">
             Upload spreadsheets or notes — past performances, previous training
             plans, test results. Your AI coach reads these when building your
@@ -124,14 +124,12 @@ export default function DocumentsPage() {
           />
           {uploading && <p className="text-indigo-600 mt-3">Uploading...</p>}
           {message && (
-            <div className="mt-4 bg-blue-50 text-blue-900 px-4 py-3 rounded">
-              {message}
-            </div>
+            <div className="mt-4 alert alert-info">{message}</div>
           )}
         </div>
 
         {docs.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="card card-pad">
             <h2 className="text-xl font-bold text-indigo-900 mb-4">
               Uploaded files ({docs.length})
             </h2>
@@ -150,17 +148,15 @@ export default function DocumentsPage() {
                     <div className="flex gap-2 whitespace-nowrap">
                       <button
                         onClick={() => toggle(d)}
-                        className={`px-3 py-1 rounded text-sm ${
-                          d.includeInAi
-                            ? "bg-green-100 text-green-800"
-                            : "bg-gray-200 text-gray-600"
+                        className={`btn btn-sm ${
+                          d.includeInAi ? "bg-green-100 text-green-800" : "bg-gray-200 text-gray-600"
                         }`}
                       >
                         {d.includeInAi ? "Used by coach" : "Ignored"}
                       </button>
                       <button
                         onClick={() => remove(d)}
-                        className="px-3 py-1 rounded text-sm bg-red-100 text-red-700"
+                        className="btn btn-sm btn-danger-soft"
                       >
                         Delete
                       </button>

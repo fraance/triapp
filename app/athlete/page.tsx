@@ -19,17 +19,16 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="label">
         {label}
       </label>
       {children}
-      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+      {hint && <p className="hint">{hint}</p>}
     </div>
   );
 }
 
-const input =
-  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const input = "input";
 
 /** Converts "mm:ss" or "h:mm:ss" to seconds, and back. */
 function toSeconds(text: string): number | null {
@@ -203,24 +202,22 @@ export default function AthletePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">Athlete profile</h1>
-          <p className="text-gray-600">
+    <div className="page-shell">
+      <div className="page-inner">
+        <header className="mb-6">
+          <h1 className="page-title">Athlete profile</h1>
+          <p className="page-subtitle">
             Everything here makes your plan more accurate. Leave anything blank
             — we&apos;ll estimate it from your data or test for it.
           </p>
-        </div>
+        </header>
 
         {message && (
-          <div className="bg-green-100 text-green-900 px-4 py-3 rounded mb-6">
-            {message}
-          </div>
+          <div className="alert alert-success mb-6">{message}</div>
         )}
 
         {suggestions.length > 0 && (
-          <div className="bg-amber-50 border border-amber-300 rounded-lg p-6 mb-6">
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 mb-6">
             <h2 className="text-lg font-bold text-amber-900 mb-1">
               We found different numbers to yours
             </h2>
@@ -247,7 +244,7 @@ export default function AthletePage() {
                       type="button"
                       onClick={() => resolve(sg.field, "accept")}
                       disabled={resolving === sg.field}
-                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                      className="btn btn-primary btn-sm"
                     >
                       Use {sg.suggestedDisplay}
                     </button>
@@ -255,7 +252,7 @@ export default function AthletePage() {
                       type="button"
                       onClick={() => resolve(sg.field, "dismiss")}
                       disabled={resolving === sg.field}
-                      className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                      className="btn btn-secondary btn-sm"
                     >
                       Keep mine
                     </button>
@@ -266,7 +263,7 @@ export default function AthletePage() {
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <div className="card card-pad mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-indigo-900">
@@ -282,7 +279,7 @@ export default function AthletePage() {
               type="button"
               onClick={prefill}
               disabled={prefilling}
-              className="bg-orange-600 text-white px-5 py-2 rounded-lg disabled:opacity-50 whitespace-nowrap"
+              className="btn btn-primary whitespace-nowrap"
             >
               {prefilling ? "Looking through your data..." : "Prefill from my data"}
             </button>
@@ -307,7 +304,7 @@ export default function AthletePage() {
 
         {/* What we already know */}
         {snapshot && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="card card-pad mb-6">
             <h2 className="text-xl font-bold text-indigo-900 mb-2">
               What we&apos;ve worked out from your data
             </h2>
@@ -344,7 +341,7 @@ export default function AthletePage() {
         )}
 
         {/* Body */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">About you</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Age">
@@ -368,7 +365,7 @@ export default function AthletePage() {
               <input type="number" step="0.1" className={input} value={p.bodyFatPct ?? ""} onChange={(e) => set("bodyFatPct", numOrNull(e.target.value))} />
             </Field>
             <Field label="Time for training" hint="Set your day-by-day availability">
-              <Link href="/availability" className="inline-block px-3 py-2 border border-indigo-300 text-indigo-700 rounded-lg">
+              <Link href="/availability" className="btn btn-secondary btn-sm">
                 Set my weekly availability →
               </Link>
             </Field>
@@ -376,9 +373,9 @@ export default function AthletePage() {
         </section>
 
         {/* Physiology */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Baseline physiology</h2>
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-4 gap-4">
             <Field label="Max heart rate" hint={detected(m?.maxHeartRate, (v) => `${v} bpm`) ?? undefined}>
               <input type="number" className={input} value={p.maxHeartRate ?? ""} onChange={(e) => set("maxHeartRate", numOrNull(e.target.value))} />
             </Field>
@@ -388,11 +385,14 @@ export default function AthletePage() {
             <Field label="HRV (ms)" hint="Optional, from your watch">
               <input type="number" className={input} value={p.hrv ?? ""} onChange={(e) => set("hrv", numOrNull(e.target.value))} />
             </Field>
+            <Field label="Threshold HR (overall)" hint="Blank uses the sport-specific values below">
+              <input type="number" className={input} value={p.thresholdHeartRate ?? ""} onChange={(e) => set("thresholdHeartRate", numOrNull(e.target.value))} />
+            </Field>
           </div>
         </section>
 
         {/* Preferences */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Preferences</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <Field label="Favourite discipline">
@@ -410,8 +410,42 @@ export default function AthletePage() {
           </div>
         </section>
 
+        {/* Per-discipline difficulty — how much each sport costs the athlete */}
+        <section className="card card-pad mb-6">
+          <h2 className="text-xl font-bold text-indigo-900 mb-4">
+            How hard each sport feels
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            1.0 = normal. Raise a sport if it costs you more than most people
+            (e.g. running 1.3), lower it if it comes easily (e.g. swimming 0.8).
+          </p>
+          <div className="grid md:grid-cols-3 gap-4">
+            {(
+              [
+                ["swimDifficulty", "Swim"],
+                ["bikeDifficulty", "Bike"],
+                ["runDifficulty", "Run"],
+              ] as const
+            ).map(([key, label]) => (
+              <Field key={key} label={label}>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="2"
+                  className={input}
+                  value={p[key] ?? 1}
+                  onChange={(e) =>
+                    set(key, e.target.value ? parseFloat(e.target.value) : 1)
+                  }
+                />
+              </Field>
+            ))}
+          </div>
+        </section>
+
         {/* Health */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Health &amp; injuries</h2>
           <div className="space-y-4">
             <Field label="Past injuries" hint="e.g. 'Left achilles tendinopathy 2024, recovered'">
@@ -448,7 +482,7 @@ export default function AthletePage() {
         </section>
 
         {/* Swim */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Swim</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="CSS pace per 100m (mm:ss)" hint={detected(m?.swimCssSecPer100, (v) => `${Math.floor(v/60)}:${String(v%60).padStart(2,"0")}/100m`) ?? "From a 400m + 200m test"}>
@@ -470,7 +504,7 @@ export default function AthletePage() {
         </section>
 
         {/* Bike */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Bike</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="FTP (watts)" hint={detected(m?.ftpWatts, (v) => `${v} W`) ?? undefined}>
@@ -486,7 +520,7 @@ export default function AthletePage() {
         </section>
 
         {/* Run */}
-        <section className="bg-white rounded-lg shadow p-6 mb-6">
+        <section className="card card-pad mb-6">
           <h2 className="text-xl font-bold text-indigo-900 mb-4">Run</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Threshold pace per km (mm:ss)" hint={detected(m?.runThresholdPaceSec, (v) => `${Math.floor(v/60)}:${String(v%60).padStart(2,"0")}/km`) ?? undefined}>
@@ -505,7 +539,7 @@ export default function AthletePage() {
               type="button"
               onClick={syncPbs}
               disabled={syncingPbs}
-              className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+              className="btn btn-primary btn-sm"
             >
               {syncingPbs ? "Reading your Strava runs..." : "Pull my PBs from Strava"}
             </button>
@@ -533,18 +567,18 @@ export default function AthletePage() {
         </section>
 
         <div className="flex gap-3 mb-10">
-          <button onClick={save} disabled={saving} className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold disabled:opacity-50">
+          <button onClick={save} disabled={saving} className="btn btn-primary btn-lg">
             {saving ? "Saving..." : "Save athlete profile"}
           </button>
         </div>
 
         {/* What the coach believes about the body, and how much it trusts it. */}
-        <div className="bg-white/60 rounded-lg p-4 mb-6">
+        <div className="card card-pad mb-6">
           <FitnessPanel />
         </div>
 
         <div className="flex gap-3 flex-wrap">
-          <Link href="/race" className="bg-white text-indigo-700 border border-indigo-300 px-6 py-3 rounded-lg">
+          <Link href="/race" className="btn btn-secondary btn-lg">
             Next: race details →
           </Link>
         </div>

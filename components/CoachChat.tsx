@@ -96,7 +96,7 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-4">
+    <div className="card card-pad">
       <h2 className="text-xl font-bold text-indigo-900 mb-1">Tell your coach</h2>
       <p className="text-gray-600 text-sm mb-3">
         How you&apos;re feeling, or what you won&apos;t have access to. The plan
@@ -142,7 +142,7 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
 
       <div className="flex gap-2">
         <textarea
-          className="border border-gray-300 rounded px-3 py-2 flex-1 resize-none"
+          className="textarea flex-1 resize-none"
           rows={2}
           placeholder="e.g. no bike until Thursday, and my Achilles is a bit sore"
           value={text}
@@ -158,7 +158,7 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
         <button
           onClick={() => send(text)}
           disabled={busy || !text.trim()}
-          className="bg-indigo-600 text-white px-5 py-2 rounded-lg disabled:opacity-50 self-end"
+          className="btn btn-primary self-end"
         >
           {busy ? "Thinking…" : "Send"}
         </button>

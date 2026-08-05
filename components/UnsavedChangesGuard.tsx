@@ -25,6 +25,7 @@ export default function UnsavedChangesGuard({
   onSave,
   saving = false,
   message = "You have unsaved changes to your plan.",
+  error = null,
 }: {
   /** Is there anything worth protecting? */
   when: boolean;
@@ -32,6 +33,13 @@ export default function UnsavedChangesGuard({
   onSave: () => Promise<boolean>;
   saving?: boolean;
   message?: string;
+  /**
+   * Why the last save failed. The page writes its error to the screen *behind*
+   * this dialog, where it cannot be read — so a rejected save looked like the
+   * app simply refusing to let the athlete leave, with Discard the only way
+   * out. The reason has to appear here.
+   */
+  error?: string | null;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
@@ -83,17 +91,25 @@ export default function UnsavedChangesGuard({
   function leave() {
     const to = pending;
     setPending(null);
+    setFailed(false);
     // Let the dialog close before the route changes, so the guard is inactive
     // by the time the click listener would see the navigation.
     active.current = false;
     if (to) router.push(to);
   }
 
+  const [failed, setFailed] = useState(false);
+
   async function saveThenLeave() {
+    setFailed(false);
     const ok = await onSave();
-    if (ok) leave();
-    // If the save failed the dialog stays open with the error shown behind it,
-    // rather than throwing the draft away on the athlete's behalf.
+    if (ok) {
+      leave();
+      return;
+    }
+    // The draft is kept rather than thrown away on the athlete's behalf, and
+    // the reason is shown here so they can act on it.
+    setFailed(true);
   }
 
   if (!pending) return null;
@@ -104,28 +120,40 @@ export default function UnsavedChangesGuard({
         <h2 className="text-lg font-bold text-indigo-900 mb-2">
           Save your changes?
         </h2>
-        <p className="text-gray-600 mb-6">{message}</p>
+        <p className="text-gray-600 mb-4">{message}</p>
+
+        {failed && (
+          <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
+            <p className="font-semibold text-red-800 mb-1">
+              That didn&apos;t save.
+            </p>
+            <p className="text-red-700 text-sm">
+              {error ||
+                "Something rejected the change. Keep editing to fix it, or discard."}
+            </p>
+          </div>
+        )}
         <div className="flex flex-col gap-2">
           <button
             onClick={saveThenLeave}
             disabled={saving}
-            className="bg-indigo-600 text-white px-4 py-3 rounded-lg font-semibold disabled:opacity-50"
+            className="btn btn-primary w-full"
           >
-            {saving ? "Saving..." : "Save and leave"}
+            {saving ? "Saving…" : failed ? "Try saving again" : "Save and leave"}
           </button>
           <button
             onClick={leave}
             disabled={saving}
-            className="text-red-700 border border-red-200 px-4 py-3 rounded-lg disabled:opacity-50"
+            className="btn btn-danger-soft w-full"
           >
             Discard changes
           </button>
           <button
             onClick={() => setPending(null)}
             disabled={saving}
-            className="text-gray-600 px-4 py-3 rounded-lg disabled:opacity-50"
+            className="btn btn-secondary w-full"
           >
-            Keep editing
+            {failed ? "Go back and fix it" : "Keep editing"}
           </button>
         </div>
       </div>

@@ -8,18 +8,10 @@ import { GarminConnect } from "@/components/GarminConnect";
 import { GoogleCalendarConnect } from "@/components/GoogleCalendarConnect";
 
 interface Profile {
-  age?: number;
-  gender?: string;
   raceDate?: string;
   raceType?: string;
   pastPerformance?: string;
   timezone?: string;
-  maxHeartRate?: number;
-  thresholdHeartRate?: number;
-  ftpWatts?: number;
-  swimDifficulty?: number;
-  bikeDifficulty?: number;
-  runDifficulty?: number;
 }
 
 export default function ProfilePage() {
@@ -126,62 +118,27 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">
+    <div className="page-shell">
+      <div className="page-inner">
+        <header className="mb-6">
+          <h1 className="page-title">
             Account &amp; plan
           </h1>
-          <p className="text-gray-600">
+          <p className="page-subtitle">
             Signed in as <strong>{user.email}</strong>
           </p>
-        </div>
+        </header>
 
 
 
         {/* Profile Form */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+        <div className="card card-pad mb-8">
           <h2 className="text-2xl font-bold text-indigo-900 mb-6">Your Profile</h2>
 
           <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Age
-              </label>
-              <input
-                type="number"
-                value={profile.age || ""}
-                onChange={(e) =>
-                  setProfile({ ...profile, age: e.target.value ? parseInt(e.target.value) : undefined })
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="e.g., 35"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Gender
-              </label>
-              <select
-                value={profile.gender || ""}
-                onChange={(e) =>
-                  setProfile({ ...profile, gender: e.target.value || undefined })
-                }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">Select...</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="label">
                 Race Date
               </label>
               <input
@@ -190,7 +147,7 @@ export default function ProfilePage() {
                 onChange={(e) =>
                   setProfile({ ...profile, raceDate: e.target.value || undefined })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="input"
               />
             </div>
 
@@ -203,7 +160,7 @@ export default function ProfilePage() {
                 onChange={(e) =>
                   setProfile({ ...profile, raceType: e.target.value || undefined })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="input"
               >
                 <option value="">Select...</option>
                 <option value="Sprint">Sprint</option>
@@ -224,125 +181,18 @@ export default function ProfilePage() {
                 setProfile({ ...profile, pastPerformance: e.target.value || undefined })
               }
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="input"
               placeholder="Share your past race results, injuries, or other relevant context..."
             />
           </div>
 
-
-          {/* Thresholds — these drive how training load is calculated */}
-          <div className="border-t pt-6">
-            <h3 className="text-lg font-bold text-indigo-900 mb-1">
-              Your physiology
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              These make your training load (TSS) numbers accurate. Leave blank
-              and we&apos;ll estimate from your Strava data.
-            </p>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max HR
-                </label>
-                <input
-                  type="number"
-                  value={profile.maxHeartRate ?? ""}
-                  onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      maxHeartRate: e.target.value ? parseInt(e.target.value) : undefined,
-                    })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="e.g., 190"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Threshold HR
-                </label>
-                <input
-                  type="number"
-                  value={profile.thresholdHeartRate ?? ""}
-                  onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      thresholdHeartRate: e.target.value
-                        ? parseInt(e.target.value)
-                        : undefined,
-                    })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="e.g., 172"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  FTP (watts)
-                </label>
-                <input
-                  type="number"
-                  value={profile.ftpWatts ?? ""}
-                  onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      ftpWatts: e.target.value ? parseInt(e.target.value) : undefined,
-                    })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  placeholder="e.g., 240"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Per-discipline difficulty */}
-          <div className="border-t pt-6">
-            <h3 className="text-lg font-bold text-indigo-900 mb-1">
-              How hard each sport feels for you
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              1.0 = normal. Raise a sport if it costs you more than most people
-              (e.g. running 1.3), lower it if it comes easily (e.g. swimming 0.8).
-            </p>
-            <div className="grid grid-cols-3 gap-4">
-              {(
-                [
-                  ["swimDifficulty", "Swim"],
-                  ["bikeDifficulty", "Bike"],
-                  ["runDifficulty", "Run"],
-                ] as const
-              ).map(([key, label]) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {label}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.5"
-                    max="2"
-                    value={profile[key] ?? 1}
-                    onChange={(e) =>
-                      setProfile({
-                        ...profile,
-                        [key]: e.target.value ? parseFloat(e.target.value) : 1,
-                      })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
           {message && (
             <div
-              className={`px-4 py-3 rounded ${
+              className={
                 message.includes("successfully")
-                  ? "bg-green-100 text-green-700"
-                  : "bg-red-100 text-red-700"
-              }`}
+                  ? "alert alert-success"
+                  : "alert alert-danger"
+              }
             >
               {message}
             </div>
@@ -351,7 +201,7 @@ export default function ProfilePage() {
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+            className="btn btn-primary w-full btn-lg"
           >
             {isSaving ? "Saving..." : "Save Profile"}
           </button>
@@ -359,7 +209,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Generate Plan Section */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+        <div className="card card-pad mb-8">
           <h2 className="text-2xl font-bold text-indigo-900 mb-4">
             Generate Your Training Plan
           </h2>
@@ -394,14 +244,14 @@ export default function ProfilePage() {
             <button
               onClick={handleGeneratePlan}
               disabled={isGenerating || !profile.raceDate}
-              className="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 font-semibold"
+              className="btn btn-primary btn-lg"
             >
               {isGenerating ? "Generating Plan..." : "Generate AI Training Plan"}
             </button>
             {hasPlan && (
               <Link
                 href="/season"
-                className="text-indigo-700 border border-indigo-300 px-6 py-3 rounded-lg"
+                className="btn btn-secondary btn-lg"
               >
                 View my plan →
               </Link>
@@ -410,7 +260,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Strava Integration Section */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+        <div className="card card-pad mb-8">
           <h2 className="text-2xl font-bold text-indigo-900 mb-4">
             Strava Integration
           </h2>
@@ -420,14 +270,14 @@ export default function ProfilePage() {
           </p>
           <a
             href="/strava"
-            className="inline-block bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition"
+            className="btn btn-primary"
           >
             Manage Strava
           </a>
         </div>
 
         {/* Garmin Integration Section */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+        <div className="card card-pad mb-8">
           <h2 className="text-2xl font-bold text-indigo-900 mb-4">
             Garmin Integration
           </h2>
@@ -439,7 +289,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Google Calendar Integration Section */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
+        <div className="card card-pad mb-8">
           <h2 className="text-2xl font-bold text-indigo-900 mb-4">
             Google Calendar Integration
           </h2>

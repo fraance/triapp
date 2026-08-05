@@ -101,21 +101,19 @@ function StravaPageInner() {
   const h = status?.history;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-10 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900">Strava</h1>
-        </div>
+    <div className="page-shell">
+      <div className="page-inner">
+        <header className="mb-6">
+          <h1 className="page-title">Strava</h1>
+        </header>
 
         {message && (
-          <div className="bg-blue-100 text-blue-900 px-4 py-3 rounded mb-6">
-            {message}
-          </div>
+          <div className="alert alert-info mb-6">{message}</div>
         )}
 
         {/* Not configured */}
         {status && !status.configured && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="card card-pad mb-6">
             <h2 className="text-xl font-bold text-indigo-900 mb-2">
               Strava not configured yet
             </h2>
@@ -138,7 +136,7 @@ function StravaPageInner() {
 
         {/* Connect / connected */}
         {status && status.configured && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="card card-pad mb-6">
             {status.connected ? (
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -163,7 +161,7 @@ function StravaPageInner() {
                 <button
                   onClick={handleSync}
                   disabled={syncing}
-                  className="bg-indigo-600 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+                  className="btn btn-primary"
                 >
                   {syncing ? "Syncing..." : "Sync now"}
                 </button>
@@ -176,7 +174,7 @@ function StravaPageInner() {
                 </p>
                 <a
                   href={`/api/strava/connect?userId=${user?.id}`}
-                  className="inline-block bg-orange-600 text-white px-6 py-3 rounded-lg font-semibold"
+                  className="btn btn-primary"
                 >
                   Connect Strava
                 </a>
@@ -187,7 +185,7 @@ function StravaPageInner() {
 
         {/* History summary */}
         {h?.hasData && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="card card-pad mb-6">
             <h2 className="text-xl font-bold text-indigo-900 mb-4">
               Your training (last {h.weeksAnalysed} weeks)
             </h2>
