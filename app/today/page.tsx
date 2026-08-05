@@ -21,14 +21,6 @@ interface DaySession {
   date: string;
 }
 
-interface AdaptationEntry {
-  id: string;
-  trigger: string;
-  explanation: string | null;
-  changes: Array<{ discipline: string; change: string; fromDate?: string; toDate?: string; fromTss?: number; toTss?: number }>;
-  at: string;
-}
-
 interface TodayView {
   date: string;
   hasPlan: boolean;
@@ -55,7 +47,6 @@ const STATUS_BADGE: Record<string, string> = {
   completed: "badge-success",
   skipped: "badge-muted",
   adapted: "badge-brand",
-  planned: "badge-brand",
 };
 
 export default function TodayPage() {
@@ -64,7 +55,7 @@ export default function TodayPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [adaptations, setAdaptations] = useState<AdaptationEntry[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -75,13 +66,6 @@ export default function TodayPage() {
       if (!res.ok) throw new Error(data.error || "Failed to load");
       setView(data);
       setError("");
-      // The change log is supporting information: never let it break Today.
-      try {
-        const res2 = await fetch(`/api/adaptations?userId=${user.id}&limit=5`);
-        if (res2.ok) setAdaptations((await res2.json()).adaptations ?? []);
-      } catch {
-        /* ignore */
-      }
     } catch (err: any) {
       setError(err.message || "Failed to load today's session");
     } finally {
@@ -197,74 +181,97 @@ export default function TodayPage() {
                 <p className="text-gray-600">Nothing scheduled for today. Recover well.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {view.sessions.map((s) => (
-                  <article key={s.id} className="card card-pad">
-                    <div className="flex justify-between items-start mb-3 gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
+              <div className="space-y-2">
+                {view.sessions.map((s) => {
+                  const expanded = expandedId === s.id;
+                  return (
+                    <article key={s.id} className="card card-pad">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(expanded ? null : s.id)}
+                        aria-expanded={expanded}
+                        className="w-full flex items-center justify-between gap-3 text-left"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
                           <span
                             className={`badge ${DISCIPLINE_STYLE[s.discipline] ?? "badge-muted"}`}
                           >
                             {s.discipline}
                           </span>
-                          <h3 className="text-xl font-bold text-indigo-900">
+                          <span className="text-indigo-900 font-semibold truncate">
                             {s.type}
-                          </h3>
+                          </span>
                         </div>
-                        <p className="text-sm text-gray-500">
-                          {s.duration} · {s.tss} TSS
-                        </p>
-                      </div>
-                      <span className={`badge ${STATUS_BADGE[s.status] ?? "badge-muted"}`}>
-                        {s.status}
-                      </span>
-                    </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-sm text-gray-500">
+                            {s.duration}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {expanded ? "▾" : "▸"}
+                          </span>
+                        </div>
+                      </button>
 
-                    {s.instructions && (
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-3">
-                        <p className="text-gray-800 whitespace-pre-line">{s.instructions}</p>
-                      </div>
-                    )}
-                    {s.pace && (
-                      <p className="text-gray-600 mb-4">
-                        <strong>Pace/Effort:</strong> {s.pace}
-                      </p>
-                    )}
+                      {expanded && (
+                        <div className="mt-3 border-t border-gray-100 pt-3">
+                          <div className="flex justify-between items-center mb-3">
+                            <p className="text-sm text-gray-500">
+                              {s.duration} · {s.tss} TSS
+                            </p>
+                            {s.status !== "planned" && (
+                              <span className={`badge ${STATUS_BADGE[s.status] ?? "badge-muted"}`}>
+                                {s.status}
+                              </span>
+                            )}
+                          </div>
 
-                    {/* Two choices only: you did it, or you're not doing it.
-                        "Skip" and "Undo" side by side read as the same thing. */}
-                    {s.status === "planned" ? (
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => setStatus(s.id, "completed")}
-                          disabled={busyId === s.id}
-                          className="btn btn-success"
-                        >
-                          {busyId === s.id ? "Saving…" : "Completed"}
-                        </button>
-                        <button
-                          onClick={() => setStatus(s.id, "skipped")}
-                          disabled={busyId === s.id}
-                          className="btn btn-secondary"
-                        >
-                          Discard
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-gray-600">
-                        {s.status === "completed" ? "Done." : "Discarded."}{" "}
-                        <button
-                          onClick={() => setStatus(s.id, "planned")}
-                          disabled={busyId === s.id}
-                          className="text-indigo-600 underline disabled:opacity-50"
-                        >
-                          change
-                        </button>
-                      </p>
-                    )}
-                  </article>
-                ))}
+                          {s.instructions && (
+                            <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-3">
+                              <p className="text-gray-800 whitespace-pre-line">{s.instructions}</p>
+                            </div>
+                          )}
+                          {s.pace && (
+                            <p className="text-gray-600 mb-4">
+                              <strong>Pace/Effort:</strong> {s.pace}
+                            </p>
+                          )}
+
+                          {/* Two choices only: you did it, or you're not doing it.
+                              "Skip" and "Undo" side by side read as the same thing. */}
+                          {s.status === "planned" ? (
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => setStatus(s.id, "completed")}
+                                disabled={busyId === s.id}
+                                className="btn btn-success"
+                              >
+                                {busyId === s.id ? "Saving…" : "Completed"}
+                              </button>
+                              <button
+                                onClick={() => setStatus(s.id, "skipped")}
+                                disabled={busyId === s.id}
+                                className="btn btn-secondary"
+                              >
+                                Discard
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-gray-600">
+                              {s.status === "completed" ? "Done." : "Discarded."}{" "}
+                              <button
+                                onClick={() => setStatus(s.id, "planned")}
+                                disabled={busyId === s.id}
+                                className="text-indigo-600 underline disabled:opacity-50"
+                              >
+                                change
+                              </button>
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -304,38 +311,6 @@ export default function TodayPage() {
                 ))}
               </div>
             )}
-          </section>
-        )}
-
-        {/* What the coach changed, and why. A plan that reshapes itself
-            silently cannot be trusted, so every change is readable here. */}
-        {adaptations.length > 0 && (
-          <section className="mb-8">
-            <h2 className="section-title mb-3">What changed</h2>
-            <div className="space-y-3">
-              {adaptations.map((a) => (
-                <div key={a.id} className="card card-pad">
-                  <p className="text-gray-800">{a.explanation}</p>
-                  {a.changes.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {a.changes.map((c, i) => (
-                        <li key={i} className="text-gray-500 text-sm">
-                          {c.change === "moved" &&
-                            `${c.discipline}: ${c.fromDate} → ${c.toDate}`}
-                          {c.change === "scaled" &&
-                            `${c.discipline} on ${c.toDate ?? c.fromDate}: load ${c.fromTss} → ${c.toTss}`}
-                          {c.change === "dropped" &&
-                            `${c.discipline} on ${c.fromDate}: dropped`}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="text-gray-400 text-xs mt-2">
-                    {new Date(a.at).toLocaleString()} · {a.trigger.replace(/_/g, " ")}
-                  </p>
-                </div>
-              ))}
-            </div>
           </section>
         )}
       </div>

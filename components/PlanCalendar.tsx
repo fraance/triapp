@@ -355,7 +355,6 @@ export default function PlanCalendar({
                   </span>
                 )}
                 {w.targetHours ? <span>{w.targetHours} h</span> : null}
-                {w.focus && <span className="text-gray-500">{w.focus}</span>}
               </div>
             </header>
 
