@@ -376,24 +376,6 @@ export default function PlanPage() {
               <div className="alert alert-info mb-4">{message}</div>
             )}
 
-            {warnings.length > 0 && (
-              <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded mb-4">
-                <p className="font-semibold mb-1">
-                  {dirty
-                    ? "Worth knowing before you save:"
-                    : "Worth knowing about this week:"}
-                </p>
-                <ul className="list-disc pl-5 space-y-1 text-sm">
-                  {warnings.map((w, i) => (
-                    <li key={i}>{w.detail}</li>
-                  ))}
-                </ul>
-                <p className="text-xs mt-2 text-amber-800">
-                  You can still save this — it&apos;s your call.
-                </p>
-              </div>
-            )}
-
             {season.detailedWeeks < season.totalWeeks && (
               <div className="card card-pad mb-4 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-gray-700">
@@ -431,12 +413,6 @@ export default function PlanPage() {
                 </div>
               </div>
             )}
-
-            <p className="text-gray-500 text-sm mb-2">
-              ★ marks a key session — what the week is for. The coach eases or
-              moves other sessions before it touches one of those. Tap any
-              session to see it in full; press and hold to move it.
-            </p>
 
             <PlanCalendar
               onOpen={(sess) => setOpenSession(sess)}

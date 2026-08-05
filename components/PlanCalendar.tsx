@@ -166,6 +166,7 @@ export default function PlanCalendar({
 
   const byDate = new Map<string, CalendarSession[]>();
   for (const s of sessions) {
+    if (s.status === "missed") continue;
     if (!byDate.has(s.date)) byDate.set(s.date, []);
     byDate.get(s.date)!.push(s);
   }
@@ -260,7 +261,7 @@ export default function PlanCalendar({
         // previously this counted missed and skipped sessions as done.
         const planned = weekSessions.reduce((sum, s) => sum + s.tss, 0);
         const done = weekSessions.reduce((sum, s) => sum + completedTss(s), 0);
-        const missed = weekSessions.filter((s) => s.status === "missed").length;
+        const remaining = Math.max(0, (w.targetTss ?? planned) - planned);
 
         return (
           <section
@@ -271,7 +272,7 @@ export default function PlanCalendar({
           >
             {/* ---- Week header ---- */}
             <header className="p-4 border-b border-gray-100">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() =>
@@ -288,27 +289,31 @@ export default function PlanCalendar({
                     {openWeeks.has(w.week) ? "▾" : "▸"}
                   </span>
                   <span className="font-bold text-indigo-900">Week {w.week}</span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-sm font-semibold ${
-                      phaseColour[w.phase] || "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {w.phase}
-                  </span>
-                  {w.isCurrentWeek && (
-                    <span className="px-2 py-0.5 rounded text-sm bg-indigo-600 text-white">
-                      This week
-                    </span>
-                  )}
-                  {w.isRaceWeek && (
-                    <span className="text-sm">🏁 Race week</span>
+                  {openWeeks.has(w.week) && (
+                    <>
+                      <span
+                        className={`px-2 py-0.5 rounded text-sm font-semibold ${
+                          phaseColour[w.phase] || "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {w.phase}
+                      </span>
+                      {w.isCurrentWeek && (
+                        <span className="px-2 py-0.5 rounded text-sm bg-indigo-600 text-white">
+                          This week
+                        </span>
+                      )}
+                      {w.isRaceWeek && (
+                        <span className="text-sm">🏁 Race week</span>
+                      )}
+                    </>
                   )}
                   <span className="text-sm text-gray-500">
                     {prettyDay(w.startDate)} – {prettyDay(days[6])}
                   </span>
                 </button>
 
-                {dirtyWeeks.has(w.week) && (
+                {dirtyWeeks.has(w.week) && openWeeks.has(w.week) && (
                   <button
                     onClick={() => onResetWeek(w.week)}
                     className="btn btn-secondary btn-sm"
@@ -318,44 +323,50 @@ export default function PlanCalendar({
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                {w.targetTss ? (
-                  <span className="flex items-center gap-2">
-                    <span className="relative w-32 h-2 rounded-full bg-gray-100 overflow-hidden">
-                      <span
-                        className="absolute inset-y-0 left-0 rounded-full bg-indigo-500"
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            Math.max(0, ((w.targetTss - planned) / w.targetTss) * 100)
-                          )}%`,
-                        }}
-                      />
-                    </span>
-                    <span>
-                      <strong className="text-indigo-900">
-                        {Math.max(0, w.targetTss - planned)}
-                      </strong>{" "}
-                      remaining
-                    </span>
-                  </span>
-                ) : (
-                  <span>
-                    <strong className="text-indigo-900">{planned}</strong> TSS
-                  </span>
-                )}
-                {done > 0 && (
-                  <span>
-                    <strong className="text-green-700">{done}</strong> completed
-                  </span>
-                )}
-                {missed > 0 && (
-                  <span className="text-red-600">
-                    {missed} missed
-                  </span>
-                )}
-                {w.targetHours ? <span>{w.targetHours} h</span> : null}
-              </div>
+              {openWeeks.has(w.week) && (
+                <div className="mt-3 text-sm text-gray-600">
+                  {w.targetTss ? (
+                    <div>
+                      <div className="relative h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <span
+                          className="absolute inset-y-0 left-0 rounded-full bg-indigo-500"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.max(0, ((w.targetTss - planned) / w.targetTss) * 100)
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="flex justify-between mt-1.5">
+                        <span>
+                          <strong className="text-green-700">{done}</strong>{" "}
+                          completed
+                        </span>
+                        <span>
+                          <strong className="text-indigo-900">{remaining}</strong>{" "}
+                          remaining
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span>
+                        <strong className="text-green-700">{done}</strong>{" "}
+                        completed
+                      </span>
+                      <span>
+                        <strong className="text-indigo-900">{planned}</strong> TSS
+                      </span>
+                    </div>
+                  )}
+                  {w.targetHours ? (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {w.targetHours} h target
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </header>
 
             {/* ---- Day rows ---- */}
@@ -434,10 +445,7 @@ export default function PlanCalendar({
                                 <p className="font-semibold text-sm text-gray-800">
                                   {s.discipline}
                                   {s.isAnchor && (
-                                    <span
-                                      title="Key session: this is what the week is for. The engine will ease or move other sessions before it touches this one."
-                                      className="text-indigo-600"
-                                    >
+                                    <span className="text-indigo-600">
                                       {" "}
                                       ★
                                     </span>
