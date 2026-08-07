@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import CoachChat from "@/components/CoachChat";
 import CoachDecisions from "@/components/CoachDecisions";
+import SessionPhases from "@/components/SessionPhases";
 import { Loading, PageHeader, Stat } from "@/components/ui";
 import Link from "next/link";
 
@@ -227,7 +228,7 @@ export default function TodayPage() {
 
                           {s.instructions && (
                             <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-3">
-                              <p className="text-gray-800 whitespace-pre-line">{s.instructions}</p>
+                              <SessionPhases instructions={s.instructions} />
                             </div>
                           )}
                           {s.pace && (

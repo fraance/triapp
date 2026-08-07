@@ -142,6 +142,32 @@ export interface PlanWeek {
 }
 
 /**
+ * Collapses duplicate sessions that would land on the same calendar day in the
+ * same discipline and type.
+ *
+ * A plan must never prescribe the same session twice. Every write path calls
+ * `sessionDate(planStart, week, day)` to place a session, so if the AI happens
+ * to emit two identical rows (same week + day + discipline + type) they become
+ * two identical sessions on one date — which reads as "Monday swim, and also
+ * another Monday swim", exactly the kind of day/type that stops matching what
+ * the athlete actually did. We keep only the first of each group. Distinct
+ * sessions on the same day (e.g. the two halves of a brick) are left intact.
+ */
+function collapseDayDuplicates<T extends { week: number; day: string; discipline: string; type: string }>(
+  rows: T[]
+): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    const key = `${r.week}|${r.day}|${r.discipline}|${r.type}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
+/**
  * Persists a full generated plan (array of weeks) for a user.
  * Replaces any previous plan so "latest" is the single source of truth.
  */
@@ -226,8 +252,9 @@ export async function saveFullPlan(
     })
   );
 
-  if (flatSessions.length > 0) {
-    await prisma.plannedSession.createMany({ data: flatSessions });
+  const deduped = collapseDayDuplicates(flatSessions);
+  if (deduped.length > 0) {
+    await prisma.plannedSession.createMany({ data: deduped });
   }
 
   return plan;
@@ -300,7 +327,7 @@ export async function rebuildFutureSessions(
   );
 
   if (flat.length > 0) {
-    await prisma.plannedSession.createMany({ data: flat });
+    await prisma.plannedSession.createMany({ data: collapseDayDuplicates(flat) });
   }
 
   // Week outlines are safe to replace wholesale: they carry no history.
@@ -630,7 +657,7 @@ export async function addDetailedWeeks(
   );
 
   if (rows.length > 0) {
-    await prisma.plannedSession.createMany({ data: rows });
+    await prisma.plannedSession.createMany({ data: collapseDayDuplicates(rows) });
   }
 
   // Keep the "how many weeks are detailed" counter accurate.

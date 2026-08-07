@@ -7,6 +7,7 @@ import PlanCalendar, {
   CalendarSession,
   CalendarWeek,
 } from "@/components/PlanCalendar";
+import SessionPhases from "@/components/SessionPhases";
 import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 import { warningsFor } from "@/lib/plan-warnings";
 import {
@@ -474,8 +475,22 @@ export default function PlanPage() {
                   )}
               </p>
 
+              {openSession.instructions && (
+                <div className="mt-4">
+                  <p className="font-semibold text-gray-800 mb-1">The session</p>
+                  <SessionPhases instructions={openSession.instructions} />
+                </div>
+              )}
+
+              {openSession.isAnchor && (
+                <p className="text-indigo-700 text-sm mt-4">
+                  ★ Key session. The coach protects this one: it will ease or move
+                  anything else in the week before touching it.
+                </p>
+              )}
+
               {openSession.load && (
-                <div className="mt-3 border border-gray-200 rounded p-3">
+                <div className="mt-4 border border-gray-200 rounded p-3">
                   <p className="font-semibold text-gray-800 mb-1">
                     What it costs you
                   </p>
@@ -509,28 +524,6 @@ export default function PlanPage() {
                       </tr>
                     </tbody>
                   </table>
-                  <p className="text-gray-500 text-xs mt-2">
-                    Two sessions with the same total can cost very different
-                    things. An hour of running does roughly four times the impact
-                    of two hours on the bike — that is what the coach limits, not
-                    the headline number.
-                  </p>
-                </div>
-              )}
-
-              {openSession.isAnchor && (
-                <p className="text-indigo-700 text-sm mt-2">
-                  ★ Key session. The coach protects this one: it will ease or move
-                  anything else in the week before touching it.
-                </p>
-              )}
-
-              {openSession.instructions && (
-                <div className="mt-4">
-                  <p className="font-semibold text-gray-800 mb-1">The session</p>
-                  <p className="text-gray-700 whitespace-pre-line">
-                    {openSession.instructions}
-                  </p>
                 </div>
               )}
 
