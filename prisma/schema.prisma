@@ -362,6 +362,17 @@ model PlannedSession {
   /// inferred (project rule 2).
   athleteNote   String?
 
+  /// The athlete's own read of how hard the session felt vs what was planned
+  /// (e.g. "very hard", "easy"). Free text, athlete-sourced only — the coach
+  /// never infers this from Strava (project rule 2). Qualitative: unlike
+  /// `actualTss` it never moves the load; it informs the coach's read.
+  difficulty    String?
+
+  /// What the athlete noticed in the body during/after — e.g. "left calf tight,
+  /// quads sore". Free text, athlete-sourced only. Informs adaptation as a soft
+  /// qualitative signal; the load numbers still come from `actualTss`/Strava.
+  bodyNote      String?
+
   // --- Adaptation engine fields ---------------------------------------
   // Anchor sessions survive every daily adaptation (spec Part 3.2).
   isAnchor     Boolean   @default(false)

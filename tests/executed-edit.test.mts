@@ -109,6 +109,24 @@ async function main() {
     const relabelledView = await getSeasonView(user.id, new Date("2026-08-10T00:00:00"));
     const relabelShown = relabelledView.weeks.flatMap((w) => w.sessions).find((s) => s.id === planned!.id);
     check("the season view carries the new title", relabelShown?.type === "Steady run", relabelShown?.type ?? "null");
+
+    console.log("\nPer-session difficulty + body note (athlete-sourced):");
+    const annotated = await updateExecutedSession(planned!.id, {
+      difficulty: "very hard",
+      bodyNote: "left calf tight, quads sore",
+    });
+    check("difficulty is saved", annotated.difficulty === "very hard", annotated.difficulty ?? "null");
+    check("body note is saved", annotated.bodyNote === "left calf tight, quads sore", annotated.bodyNote ?? "null");
+    check("difficulty/body note never touch the load", annotated.actualTss === 30, String(annotated.actualTss));
+
+    const annotatedView = await getSeasonView(user.id, new Date("2026-08-10T00:00:00"));
+    const annotShown = annotatedView.weeks.flatMap((w) => w.sessions).find((s) => s.id === planned!.id);
+    check("the season view carries the difficulty", annotShown?.difficulty === "very hard", annotShown?.difficulty ?? "null");
+    check("the season view carries the body note", annotShown?.bodyNote?.includes("calf"), annotShown?.bodyNote ?? "null");
+
+    console.log("\nClearing the body note (empty string → null):");
+    const clearedBody = await updateExecutedSession(planned!.id, { bodyNote: "" });
+    check("an empty body note is stored as null", clearedBody.bodyNote === null);
   } finally {
     const plans = await prisma.trainingPlan.findMany({ where: { userId: user.id }, select: { id: true } });
     await prisma.planWeekOutline.deleteMany({ where: { planId: { in: plans.map((p) => p.id) } } });

@@ -433,6 +433,8 @@ export async function updateExecutedSession(
     athleteNote?: string | null;
     type?: string | null;
     duration?: string | null;
+    difficulty?: string | null;
+    bodyNote?: string | null;
   }
 ) {
   const session = await prisma.plannedSession.findUnique({ where: { id: sessionId } });
@@ -448,6 +450,8 @@ export async function updateExecutedSession(
     athleteNote?: string | null;
     type?: string;
     duration?: string;
+    difficulty?: string | null;
+    bodyNote?: string | null;
   } = {};
   if (edit.actualTss !== undefined && edit.actualTss !== null) {
     if (!Number.isFinite(edit.actualTss) || edit.actualTss < 0) {
@@ -467,6 +471,14 @@ export async function updateExecutedSession(
       throw new Error("Enter a duration");
     }
     data.duration = cleaned;
+  }
+  if (edit.difficulty !== undefined) {
+    data.difficulty = edit.difficulty
+      ? edit.difficulty.trim().slice(0, 40) || null
+      : null;
+  }
+  if (edit.bodyNote !== undefined) {
+    data.bodyNote = edit.bodyNote ? edit.bodyNote.trim().slice(0, 500) || null : null;
   }
 
   const updated = await prisma.plannedSession.update({
@@ -834,6 +846,10 @@ export interface SeasonSession {
   isAnchor: boolean;
   /** The athlete's own correction to what actually happened, if they gave one. */
   athleteNote: string | null;
+  /** The athlete's read of how hard it felt (e.g. "very hard"). Athlete-sourced. */
+  difficulty: string | null;
+  /** What the athlete noticed in the body (e.g. "left calf tight"). Athlete-sourced. */
+  bodyNote: string | null;
 }
 
 export interface SeasonView {
@@ -956,6 +972,8 @@ export async function getSeasonView(
       status: s.status,
       isAnchor: s.isAnchor,
       athleteNote: s.athleteNote ?? null,
+      difficulty: s.difficulty ?? null,
+      bodyNote: s.bodyNote ?? null,
     });
   }
   // Chronological within each week, so the calendar can render rows in order.

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSeasonView } from "@/lib/db";
+import { reconcileIfStale } from "@/lib/adaptation/reconcile-if-stale";
 
 /** Returns every week from now to race day, detailed or outline-only. */
 export async function GET(req: NextRequest) {
@@ -10,6 +11,11 @@ export async function GET(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
+
+    // The calendar must match Strava. If anything was synced since the plan
+    // last absorbed an activity, reconcile it into the plan before building
+    // the view — otherwise the calendar silently lags the athlete's rides.
+    await reconcileIfStale(userId);
 
     const season = await getSeasonView(userId);
     return NextResponse.json(season);

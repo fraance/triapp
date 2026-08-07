@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTodayView } from "@/lib/db";
+import { reconcileIfStale } from "@/lib/adaptation/reconcile-if-stale";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
       if (y && m && d) reference = new Date(y, m - 1, d);
     }
 
+    await reconcileIfStale(userId);
     const view = await getTodayView(userId, reference);
     return NextResponse.json(view);
   } catch (error: any) {

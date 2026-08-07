@@ -246,6 +246,41 @@ export async function handleAthleteMessage(
   // is a report or a question.
   const plan = await upcomingPlan(userId, now);
 
+  // The athlete's own recent difficulty / body notes (completed sessions the
+  // athlete annotated). Athlete-sourced only (project rule 2): the coach can
+  // allude to "your legs felt heavy" but must never invent such a note, so an
+  // absent note is simply absent.
+  const recentPlan = await prisma.trainingPlan.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      sessions: {
+        where: { status: "completed" },
+        orderBy: { scheduledDate: "desc" },
+        take: 5,
+      },
+    },
+  });
+  const recentTraining = (recentPlan?.sessions ?? [])
+    .map((s) => {
+      const note = s.athleteNote?.trim();
+      const difficulty = s.difficulty?.trim();
+      const body = s.bodyNote?.trim();
+      if (!note && !difficulty && !body) return null;
+      const bits = [
+        s.scheduledDate ? localISO(s.scheduledDate) : null,
+        s.discipline,
+        s.type,
+      ].filter(Boolean);
+      const labeled: string[] = [];
+      if (difficulty) labeled.push(`felt: ${difficulty}`);
+      if (body) labeled.push(`body: ${body}`);
+      if (note) labeled.push(`note: ${note}`);
+      return `${bits.join(" ")} — ${labeled.join(", ")}`;
+    })
+    .filter((x): x is string => x !== null)
+    .slice(0, 3);
+
   // Tokens are opaque and regenerated every call, never a real id — so the
   // model can never accidentally (or by hallucination) reference a session
   // that isn't genuinely one of the athlete's own, listed right here.
@@ -300,6 +335,7 @@ export async function handleAthleteMessage(
       plan,
       scheduleOutcome,
       fallback,
+      recentTraining,
     });
 
     let reportId: string | null = null;
@@ -422,6 +458,7 @@ export async function handleAthleteMessage(
     plan,
     scheduleOutcome,
     fallback: deterministicReply({ risk, opportunity, outcome, scheduleOutcome }),
+    recentTraining,
   });
 
   if (reportId && !opts.dryRun) {
@@ -609,7 +646,19 @@ const COACH_SYSTEM_PROMPT = [
   "- If they asked for a move or swap that could not be done, say so plainly and",
   "  give the reason given — do not pretend it happened.",
   "- If nothing was changed, say so naturally and, where useful, what the athlete",
-  "  can do instead.",
+  "  can do instead. Never end a reply with a generic invitation that no longer",
+  "  applies; if the plan now stands as asked, say that plainly and stop.",
+  "- Match the athlete's intent. If they gave a clear directive (rest, move a",
+  "  session, skip a day), treat it as a change to make and reflect the concrete",
+  "  result — not a vague acknowledgement.",
+  "- Do not ask for information you were already given, and never ask the",
+  "  athlete to re-confirm something the engine already acted on.",
+  "- State plainly what the system actually did. Never imply a change happened",
+  "  unless the changes below show it; never imply the plan was left alone",
+  "  unless the changes are empty.",
+  "- If the athlete reports how a session felt or a body ache, acknowledge it",
+  "  against the athlete's own recent notes below; never attribute to them a",
+  "  pain or sensation they did not report.",
   "- 2-5 sentences. Plain and direct. No cheerleading, no bullet points, no",
   "  markdown, no emojis.",
 ].join("\n");
@@ -631,8 +680,9 @@ async function composeCoachReply(args: {
   plan: Awaited<ReturnType<typeof upcomingPlan>>;
   scheduleOutcome: ScheduleOutcome;
   fallback: string;
+  recentTraining: string[];
 }): Promise<string> {
-  const { text, today, parsed, risk, opportunity, outcome, plan, scheduleOutcome, fallback } = args;
+  const { text, today, parsed, risk, opportunity, outcome, plan, scheduleOutcome, fallback, recentTraining } = args;
   if (!process.env.OPENAI_API_KEY) return fallback;
 
   const changes = outcome?.changes ?? [];
@@ -654,6 +704,10 @@ async function composeCoachReply(args: {
               daysToRace: plan.daysToRace,
               raceDate: plan.raceDate,
               athleteSaid: text,
+              // The athlete's own recent notes on how sessions felt. Empty if
+              // they have annotated nothing. Athlete-sourced; do not invent any.
+              recentTraining:
+                recentTraining.length > 0 ? recentTraining : "the athlete has recorded no notes",
               whatWeUnderstood: {
                 fatigue: parsed.fatigue,
                 sleepQuality: parsed.sleepQuality,

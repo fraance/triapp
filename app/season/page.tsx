@@ -85,6 +85,7 @@ export default function PlanPage() {
   // ---- Editing what a session actually was -------------------------------
   const [savingExecuted, setSavingExecuted] = useState(false);
   const [executedError, setExecutedError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   function openSessionDetail(sess: any) {
     setExecutedError(null);
@@ -99,6 +100,8 @@ export default function PlanPage() {
     athleteNote?: string;
     type?: string;
     duration?: string;
+    difficulty?: string;
+    bodyNote?: string;
   }) {
     if (!user || !openSession) return;
     setSavingExecuted(true);
@@ -136,6 +139,25 @@ export default function PlanPage() {
     }
     void saveExecutedField(cast);
   };
+
+  // Copy the full workout (discipline + type + instructions) so the athlete can
+  // paste it into their watch or notes. Plain text, from data we already hold —
+  // never a guess.
+  async function copySession(sess: any) {
+    const header = [sess.discipline, sess.type].filter(Boolean).join(" · ");
+    const text = [header, sess.duration, sess.instructions]
+      .filter(Boolean)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard may be unavailable (permissions); fall back to a prompt so the
+      // athlete still gets the text.
+      window.prompt("Copy the workout:", text);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -512,24 +534,23 @@ export default function PlanPage() {
                       <span className="text-indigo-600" title="Key session"> ★</span>
                     )}
                   </h3>
-                  <p className="text-gray-600">
-                    <InlineEditable
-                      value={openSession.type ?? ""}
-                      onSave={(next) => ed({ type: next })}
-                      placeholder="What kind of session"
-                      label="session title"
-                    />
-                    {" · "}
-                    {openSession.date}
-                  </p>
                 </div>
-                <button
-                  onClick={() => setOpenSession(null)}
-                  className="text-gray-500 px-2"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void copySession(openSession)}
+                    className="text-sm text-indigo-600 hover:text-indigo-800 px-2 py-1"
+                    aria-label="Copy workout description"
+                  >
+                    {copied ? "Copied ✓" : "Copy"}
+                  </button>
+                  <button
+                    onClick={() => setOpenSession(null)}
+                    className="text-gray-500 px-2"
+                    aria-label="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               <p className="text-gray-700">
@@ -583,6 +604,29 @@ export default function PlanPage() {
                   <p className="font-semibold text-gray-800 mb-1">
                     What actually happened
                   </p>
+                  <div className="mb-2">
+                    <p className="text-xs text-gray-500 mb-1">
+                      How hard was it, compared to planned?
+                    </p>
+                    <InlineEditable
+                      value={openSession.difficulty ?? ""}
+                      onSave={(v) => ed({ difficulty: v })}
+                      placeholder='e.g. "very hard" or "easy"'
+                      label="how hard it felt"
+                    />
+                  </div>
+                  <div className="mb-2">
+                    <p className="text-xs text-gray-500 mb-1">
+                      What did you notice in the body?
+                    </p>
+                    <InlineEditable
+                      value={openSession.bodyNote ?? ""}
+                      onSave={(v) => ed({ bodyNote: v })}
+                      placeholder='e.g. "x,y,z was hurting"'
+                      multiline
+                      label="body note"
+                    />
+                  </div>
                   <InlineEditable
                     value={openSession.athleteNote ?? ""}
                     onSave={(v) => ed({ athleteNote: v })}
@@ -591,11 +635,13 @@ export default function PlanPage() {
                     label="what actually happened"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Edit any of the figures above: the type, duration or load.
-                    The load number — not this note — is what your training load
+                    Edit any of the figures above: the duration or load.
+                    The load number — not these notes — is what your training load
                     and the rest of the plan are calculated from, so adjust it
-                    when the session cost more or less than planned. Enter adds
-                    a new line in the note.
+                    when the session cost more or less than planned. "How hard it
+                    felt" and the body note help the coach read your fatigue;
+                    they never change the load on their own. Enter adds a new
+                    line in a note.
                   </p>
                 </div>
               )}
