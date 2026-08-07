@@ -428,7 +428,12 @@ export async function updateSessionStatus(
  */
 export async function updateExecutedSession(
   sessionId: string,
-  edit: { actualTss?: number | null; athleteNote?: string | null }
+  edit: {
+    actualTss?: number | null;
+    athleteNote?: string | null;
+    type?: string | null;
+    duration?: string | null;
+  }
 ) {
   const session = await prisma.plannedSession.findUnique({ where: { id: sessionId } });
   if (!session) throw new Error("Session not found");
@@ -438,7 +443,12 @@ export async function updateExecutedSession(
     );
   }
 
-  const data: { actualTss?: number; athleteNote?: string | null } = {};
+  const data: {
+    actualTss?: number;
+    athleteNote?: string | null;
+    type?: string;
+    duration?: string;
+  } = {};
   if (edit.actualTss !== undefined && edit.actualTss !== null) {
     if (!Number.isFinite(edit.actualTss) || edit.actualTss < 0) {
       throw new Error("actualTss must be a non-negative number");
@@ -447,6 +457,16 @@ export async function updateExecutedSession(
   }
   if (edit.athleteNote !== undefined) {
     data.athleteNote = edit.athleteNote ? edit.athleteNote.trim().slice(0, 500) || null : null;
+  }
+  if (edit.type !== undefined) {
+    data.type = edit.type ? edit.type.trim().slice(0, 80) : undefined;
+  }
+  if (edit.duration !== undefined) {
+    const cleaned = edit.duration ? edit.duration.trim().slice(0, 40) : "";
+    if (!cleaned) {
+      throw new Error("Enter a duration");
+    }
+    data.duration = cleaned;
   }
 
   const updated = await prisma.plannedSession.update({

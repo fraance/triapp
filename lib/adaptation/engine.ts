@@ -59,6 +59,11 @@ import {
 } from "./physiology";
 import { narrate } from "./narrator";
 import { startOfDay } from "../plan-dates";
+import {
+  salvageSkippedSessions,
+  SALVAGE_WINDOW_DAYS,
+  SalvageSummary,
+} from "./skip-salvage";
 
 /** How much better a plan must be before we disturb the athlete (spec 4.4). */
 const HYSTERESIS_FACTOR = 1.08;
@@ -235,6 +240,49 @@ export async function adaptPlanForUser(
       reason: "nothing left to adapt",
       reconciled: summarise(reconciled),
     };
+  }
+
+  // ---- Skip salvage (v3 §3.5) -------------------------------------------
+  // Before reasoning about load, give skipped important work its place in the
+  // week. This runs regardless of whether the solver is mid-`blocked_frozen`,
+  // so a skip never silently vanishes. It reuses `scheduleID` rows already
+  // pulled; the requeued slot is seen by the solver as adapted work.
+  const availabilityEarly = await prisma.trainingAvailability.findUnique({
+    where: { userId },
+  });
+  const salvageAvailability = weeklyHoursFrom(availabilityEarly);
+  const salvageSlots = rows
+    .filter((r) => r.scheduledDate)
+    .map((r) => ({
+      id: r.id,
+      date: iso(r.scheduledDate!),
+      discipline: r.discipline,
+      type: r.type ?? "",
+      isAnchor: r.isAnchor,
+      status: r.status,
+    }));
+  const salvageRes = await salvageSkippedSessions(
+    userId,
+    plan.id,
+    {
+      today,
+      frozenUntil: freezeBoundary(now),
+      horizonDays: SALVAGE_WINDOW_DAYS,
+      raceDate: plan.targetRaceDate ? iso(plan.targetRaceDate) : null,
+      fits: (date, minutes) =>
+        !salvageAvailability.isSet || fitsOnDate(salvageAvailability, date, minutes),
+      slots: salvageSlots,
+      existingTestDates: rows
+        .filter((r) => r.isTest && r.scheduledDate)
+        .map((r) => iso(r.scheduledDate!)),
+    },
+    { dryRun: opts.dryRun }
+  );
+  if (salvageRes.requeued.length > 0 || salvageRes.couldNotPlace.length > 0) {
+    console.log(
+      `[salvage] ${salvageRes.requeued.length} requeued, ` +
+        `${salvageRes.couldNotPlace.length} could not be placed`
+    );
   }
 
   // Completed training, for drift and chronic load.

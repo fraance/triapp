@@ -8,7 +8,7 @@ import { updateExecutedSession, sessionBelongsToUser } from "@/lib/db";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { userId, sessionId, actualTss, athleteNote } = await req.json();
+    const { userId, sessionId, actualTss, athleteNote, type, duration } = await req.json();
 
     if (!userId || !sessionId) {
       return NextResponse.json(
@@ -16,9 +16,14 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (actualTss === undefined && athleteNote === undefined) {
+    if (
+      actualTss === undefined &&
+      athleteNote === undefined &&
+      type === undefined &&
+      duration === undefined
+    ) {
       return NextResponse.json(
-        { error: "Provide actualTss and/or athleteNote to update" },
+        { error: "Provide at least one field to update" },
         { status: 400 }
       );
     }
@@ -34,6 +39,8 @@ export async function POST(req: NextRequest) {
     const updated = await updateExecutedSession(sessionId, {
       actualTss: typeof actualTss === "number" ? actualTss : undefined,
       athleteNote: typeof athleteNote === "string" ? athleteNote : undefined,
+      type: typeof type === "string" ? type : undefined,
+      duration: typeof duration === "string" ? duration : undefined,
     });
 
     // The rest of the plan should react to the corrected reality (a session

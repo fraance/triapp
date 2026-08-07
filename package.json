@@ -35,7 +35,8 @@
     "test:load": "tsx tests/session-load.test.mts",
     "test:sync-reconcile": "tsx tests/sync-reconcile.test.mts",
     "test:executed-edit": "tsx tests/executed-edit.test.mts",
-    "test:schedule-intent": "tsx tests/schedule-intent.test.mts"
+    "test:schedule-intent": "tsx tests/schedule-intent.test.mts",
+    "test:salvage": "tsx tests/skip-salvage.test.mts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "latest",

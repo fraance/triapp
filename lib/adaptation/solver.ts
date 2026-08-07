@@ -274,7 +274,12 @@ function expand(
     if (input.frozenUntil && origin <= input.frozenUntil) continue;
 
     // 1. Scale the session down (preserve purpose, reduce cost).
-    for (const factor of [0.75, 0.5]) {
+    // A coarse set (0.75/0.5) could not reach a legal plan: the drift caps
+    // compare scaled load against `baseline * factor`, and rounding pushed the
+    // 0.5 output fractionally over the cap, leaving the solver reporting the
+    // plan permanently unfixable when a slightly harder cut would have fixed
+    // it. Finer steps let it actually land under the ceiling.
+    for (const factor of [0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]) {
       const next = clone(candidate);
       next[i] = {
         ...s,

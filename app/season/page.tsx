@@ -9,6 +9,7 @@ import PlanCalendar, {
 } from "@/components/PlanCalendar";
 import SessionPhases from "@/components/SessionPhases";
 import SyncStravaButton from "@/components/SyncStravaButton";
+import InlineEditable from "@/components/InlineEditable";
 import { didTrain } from "@/lib/session-status";
 import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 import { warningsFor } from "@/lib/plan-warnings";
@@ -82,37 +83,34 @@ export default function PlanPage() {
   const [draft, setDraft] = useState<DraftState>(emptyDraft({}));
 
   // ---- Editing what a session actually was -------------------------------
-  const [editingExecuted, setEditingExecuted] = useState(false);
-  const [editTss, setEditTss] = useState("");
-  const [editNote, setEditNote] = useState("");
   const [savingExecuted, setSavingExecuted] = useState(false);
   const [executedError, setExecutedError] = useState<string | null>(null);
 
   function openSessionDetail(sess: any) {
-    setEditingExecuted(false);
     setExecutedError(null);
-    setEditTss(String(sess.actualTss ?? sess.tss ?? ""));
-    setEditNote(sess.athleteNote ?? "");
     setOpenSession(sess);
   }
 
-  async function saveExecuted() {
+  // Save a single corrected field (title, duration, load or note) and let the
+  // plan react. Kept separate from the draft-move machinery: only this modal
+  // writes to the executed-session endpoint.
+  async function saveExecutedField(patch: {
+    actualTss?: number;
+    athleteNote?: string;
+    type?: string;
+    duration?: string;
+  }) {
     if (!user || !openSession) return;
     setSavingExecuted(true);
     setExecutedError(null);
     try {
-      const tss = editTss.trim() === "" ? undefined : Number(editTss);
-      if (tss !== undefined && (!Number.isFinite(tss) || tss < 0)) {
-        throw new Error("Enter a TSS of 0 or more.");
-      }
       const res = await fetch("/api/sessions/executed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
           sessionId: openSession.id,
-          actualTss: tss,
-          athleteNote: editNote,
+          ...patch,
         }),
       });
       const data = await res.json();
@@ -122,8 +120,6 @@ export default function PlanPage() {
           ? "Saved. The rest of the plan has been adjusted to match."
           : "Saved."
       );
-      setEditingExecuted(false);
-      setOpenSession(null);
       await load();
     } catch (e: any) {
       setExecutedError(e.message || "Could not save.");
@@ -131,6 +127,15 @@ export default function PlanPage() {
       setSavingExecuted(false);
     }
   }
+
+  const ed = (patch: Record<string, string | number>) => {
+    const cast: Parameters<typeof saveExecutedField>[0] = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === "actualTss") cast.actualTss = Number(v);
+      else (cast as any)[k] = v;
+    }
+    void saveExecutedField(cast);
+  };
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -508,7 +513,14 @@ export default function PlanPage() {
                     )}
                   </h3>
                   <p className="text-gray-600">
-                    {openSession.type} · {openSession.date}
+                    <InlineEditable
+                      value={openSession.type ?? ""}
+                      onSave={(next) => ed({ type: next })}
+                      placeholder="What kind of session"
+                      label="session title"
+                    />
+                    {" · "}
+                    {openSession.date}
                   </p>
                 </div>
                 <button
@@ -521,127 +533,69 @@ export default function PlanPage() {
               </div>
 
               <p className="text-gray-700">
-                {openSession.duration} ·{" "}
-                {openSession.actualTss != null
-                  ? openSession.actualTss
-                  : openSession.tss}{" "}
-                load
-                {openSession.actualTss != null &&
-                  openSession.actualTss !== openSession.tss &&
-                  openSession.tss > 0 && (
-                    <span className="text-gray-500">
-                      {" "}
-                      (planned {openSession.tss})
-                    </span>
-                  )}
+                <InlineEditable
+                  value={openSession.duration ?? ""}
+                  onSave={(v) => ed({ duration: v })}
+                  placeholder="duration"
+                  label="duration"
+                />
+                {" · "}
+                <span className="inline-flex items-center gap-1">
+                  <InlineEditable
+                    value={String(
+                      openSession.actualTss != null
+                        ? openSession.actualTss
+                        : openSession.tss
+                    )}
+                    onSave={(v) => ed({ actualTss: v })}
+                    label="load"
+                  />
+                  <span>
+                    {" "}
+                    load
+                    {openSession.actualTss != null &&
+                      openSession.actualTss !== openSession.tss &&
+                      openSession.tss > 0 && (
+                        <span className="text-gray-500">
+                          {" "}
+                          (planned {openSession.tss})
+                        </span>
+                      )}
+                  </span>
+                </span>
               </p>
 
-              {didTrain(openSession.status) && !editingExecuted && (
-                <div className="mt-3">
+              {executedError && (
+                <p className="text-sm text-red-600 mt-3">
+                  {executedError}{" "}
                   <button
                     type="button"
-                    onClick={() => setEditingExecuted(true)}
-                    className="text-sm text-indigo-600 underline"
+                    onClick={() => setExecutedError(null)}
+                    className="underline text-red-500"
                   >
-                    {openSession.athleteNote
-                      ? "Edit what you actually did"
-                      : "Add what you actually did"}
+                    dismiss
                   </button>
-                </div>
+                </p>
               )}
 
-              {editingExecuted && (
-                <div className="mt-3 border border-indigo-200 rounded p-3 bg-indigo-50/40">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    What actually happened
-                  </label>
-                  <textarea
-                    value={editNote}
-                    onChange={(e) => setEditNote(e.target.value)}
-                    placeholder='e.g. "Did 3x3 instead of 6x3 — calf felt tight"'
-                    rows={3}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-3"
-                  />
-
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Actual load (TSS)
-                  </label>
-                  <p className="text-xs text-gray-500 mb-1">
-                    This number — not the description above — is what your
-                    training load and the rest of the plan are calculated
-                    from. Describing it isn't enough on its own: if it cost
-                    less (or more) than planned, adjust the number too, or
-                    tap one below.
-                  </p>
-                  <input
-                    type="number"
-                    min={0}
-                    value={editTss}
-                    onChange={(e) => setEditTss(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-2"
-                  />
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {[
-                      { label: "As planned", factor: null },
-                      { label: "~75% of that", factor: 0.75 },
-                      { label: "~half", factor: 0.5 },
-                      { label: "~25% of that", factor: 0.25 },
-                    ].map((chip) => (
-                      <button
-                        key={chip.label}
-                        type="button"
-                        onClick={() => {
-                          const base = openSession.actualTss ?? openSession.tss ?? 0;
-                          setEditTss(
-                            String(
-                              chip.factor === null
-                                ? openSession.tss
-                                : Math.round(base * chip.factor)
-                            )
-                          );
-                        }}
-                        className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
-                      >
-                        {chip.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {executedError && (
-                    <p className="text-sm text-red-600 mt-2">{executedError}</p>
-                  )}
-                  <div className="flex gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={saveExecuted}
-                      disabled={savingExecuted}
-                      className="btn btn-primary text-sm"
-                    >
-                      {savingExecuted ? "Saving…" : "Save"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingExecuted(false)}
-                      disabled={savingExecuted}
-                      className="btn btn-secondary text-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Saving this updates your training load and lets the coach
-                    adjust the rest of the plan to match what really happened.
-                  </p>
-                </div>
-              )}
-
-              {!editingExecuted && openSession.athleteNote && (
-                <div className="mt-4 border border-indigo-200 rounded p-3 bg-indigo-50/40">
+{didTrain(openSession.status) && (
+                <div className="mt-4">
                   <p className="font-semibold text-gray-800 mb-1">
                     What actually happened
                   </p>
-                  <p className="text-gray-700 whitespace-pre-line">
-                    {openSession.athleteNote}
+                  <InlineEditable
+                    value={openSession.athleteNote ?? ""}
+                    onSave={(v) => ed({ athleteNote: v })}
+                    placeholder='e.g. "Did 3x3 instead of 6x3 — calf felt tight"'
+                    multiline
+                    label="what actually happened"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Edit any of the figures above: the type, duration or load.
+                    The load number — not this note — is what your training load
+                    and the rest of the plan are calculated from, so adjust it
+                    when the session cost more or less than planned. Enter adds
+                    a new line in the note.
                   </p>
                 </div>
               )}

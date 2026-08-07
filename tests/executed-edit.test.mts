@@ -96,6 +96,19 @@ async function main() {
     console.log("\nClearing the note:");
     const cleared = await updateExecutedSession(planned!.id, { athleteNote: "" });
     check("an empty note is stored as null, not an empty string", cleared.athleteNote === null);
+
+    console.log("\nInline fields (title / duration) from the modal:");
+    const relabelled = await updateExecutedSession(planned!.id, {
+      type: "Steady run",
+      duration: "35 min",
+    });
+    check("the title is editable inline", relabelled.type === "Steady run", relabelled.type ?? "null");
+    check("the duration is editable inline", relabelled.duration === "35 min", relabelled.duration ?? "null");
+    check("an inline edit leaves TSS alone", relabelled.actualTss === 30, String(relabelled.actualTss));
+
+    const relabelledView = await getSeasonView(user.id, new Date("2026-08-10T00:00:00"));
+    const relabelShown = relabelledView.weeks.flatMap((w) => w.sessions).find((s) => s.id === planned!.id);
+    check("the season view carries the new title", relabelShown?.type === "Steady run", relabelShown?.type ?? "null");
   } finally {
     const plans = await prisma.trainingPlan.findMany({ where: { userId: user.id }, select: { id: true } });
     await prisma.planWeekOutline.deleteMany({ where: { planId: { in: plans.map((p) => p.id) } } });

@@ -91,11 +91,16 @@ export async function reconcilePlanWithActivities(
   const windowStart =
     plan.startDate && plan.startDate > from ? plan.startDate : from;
 
-  // Only past days are judged. `lt: today` deliberately excludes today.
+  // Past days are judged, and today is brought in line with what the athlete
+  // has already done. Including today matters for the sync path: a session the
+  // athlete finished this morning and synced would otherwise sit invisible in
+  // the plan until midnight. The "missed" verdict below stays exclusive to
+  // fully-past days — today is still in play, so an unfinished session today is
+  // not called missed.
   const sessions = await prisma.plannedSession.findMany({
     where: {
       planId: plan.id,
-      scheduledDate: { gte: windowStart, lt: today },
+      scheduledDate: { gte: windowStart, lt: addDays(today, 1) },
     },
     orderBy: { scheduledDate: "asc" },
   });
@@ -170,6 +175,9 @@ export async function reconcilePlanWithActivities(
           actualDiscipline: other[0].discipline,
         });
       } else {
+        // Today is not over yet — a planned session with nothing done so far
+        // is not missed, it may simply not have happened yet.
+        if (localISO(s.scheduledDate) >= localISO(today)) continue;
         outcome = "missed";
       }
     }
@@ -215,7 +223,7 @@ export async function reconcilePlanWithActivities(
   const leftover = activities.filter(
     (a) =>
       !consumed.has(a.id) &&
-      localISO(a.startDate) < localISO(today) &&
+      localISO(a.startDate) <= localISO(today) &&
       // A zero-length activity is a Strava artefact, not training.
       a.movingTime > 60
   );
