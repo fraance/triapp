@@ -537,34 +537,21 @@ export default function PlanPage() {
               </p>
 
               {didTrain(openSession.status) && !editingExecuted && (
-                <div className="mt-2">
-                  {openSession.athleteNote && (
-                    <p className="text-sm text-gray-600 italic">
-                      "{openSession.athleteNote}"
-                    </p>
-                  )}
+                <div className="mt-3">
                   <button
                     type="button"
                     onClick={() => setEditingExecuted(true)}
-                    className="text-sm text-indigo-600 underline mt-1"
+                    className="text-sm text-indigo-600 underline"
                   >
-                    Edit what you actually did
+                    {openSession.athleteNote
+                      ? "Edit what you actually did"
+                      : "Add what you actually did"}
                   </button>
                 </div>
               )}
 
               {editingExecuted && (
                 <div className="mt-3 border border-indigo-200 rounded p-3 bg-indigo-50/40">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Actual load (TSS)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={editTss}
-                    onChange={(e) => setEditTss(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-3"
-                  />
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     What actually happened
                   </label>
@@ -573,12 +560,57 @@ export default function PlanPage() {
                     onChange={(e) => setEditNote(e.target.value)}
                     placeholder='e.g. "Did 3x3 instead of 6x3 — calf felt tight"'
                     rows={3}
-                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-3"
                   />
+
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Actual load (TSS)
+                  </label>
+                  <p className="text-xs text-gray-500 mb-1">
+                    This number — not the description above — is what your
+                    training load and the rest of the plan are calculated
+                    from. Describing it isn't enough on its own: if it cost
+                    less (or more) than planned, adjust the number too, or
+                    tap one below.
+                  </p>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editTss}
+                    onChange={(e) => setEditTss(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-2"
+                  />
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[
+                      { label: "As planned", factor: null },
+                      { label: "~75% of that", factor: 0.75 },
+                      { label: "~half", factor: 0.5 },
+                      { label: "~25% of that", factor: 0.25 },
+                    ].map((chip) => (
+                      <button
+                        key={chip.label}
+                        type="button"
+                        onClick={() => {
+                          const base = openSession.actualTss ?? openSession.tss ?? 0;
+                          setEditTss(
+                            String(
+                              chip.factor === null
+                                ? openSession.tss
+                                : Math.round(base * chip.factor)
+                            )
+                          );
+                        }}
+                        className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+
                   {executedError && (
                     <p className="text-sm text-red-600 mt-2">{executedError}</p>
                   )}
-                  <div className="flex gap-2 mt-3">
+                  <div className="flex gap-2 mt-1">
                     <button
                       type="button"
                       onClick={saveExecuted}
@@ -603,9 +635,22 @@ export default function PlanPage() {
                 </div>
               )}
 
+              {!editingExecuted && openSession.athleteNote && (
+                <div className="mt-4 border border-indigo-200 rounded p-3 bg-indigo-50/40">
+                  <p className="font-semibold text-gray-800 mb-1">
+                    What actually happened
+                  </p>
+                  <p className="text-gray-700 whitespace-pre-line">
+                    {openSession.athleteNote}
+                  </p>
+                </div>
+              )}
+
               {openSession.instructions && (
                 <div className="mt-4">
-                  <p className="font-semibold text-gray-800 mb-1">The session</p>
+                  <p className="font-semibold text-gray-800 mb-1">
+                    {openSession.athleteNote ? "What was planned" : "The session"}
+                  </p>
                   <SessionPhases instructions={openSession.instructions} />
                 </div>
               )}
