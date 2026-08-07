@@ -45,3 +45,10 @@ already exists.
 ## 5. Every milestone must be runnable and tested
 Write automated tests for new logic (`npm test`), verify `npm run build` passes,
 and give the CEO exact terminal commands plus what he should see.
+
+## 6. Always commit and push
+Once a change is tested and `npm run build` passes, commit it and push to `main`
+without waiting to be asked each time — Railway auto-deploys from `main`, so
+this is how work actually reaches the CEO. Write a clear commit message, but do
+not stop to ask for permission to commit/push on top of an already-approved
+task.

@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import CoachChat from "@/components/CoachChat";
 import CoachDecisions from "@/components/CoachDecisions";
 import SessionPhases from "@/components/SessionPhases";
+import SyncStravaButton from "@/components/SyncStravaButton";
 import { Loading, PageHeader, Stat } from "@/components/ui";
 import Link from "next/link";
 
@@ -113,15 +114,6 @@ export default function TodayPage() {
     }
   }
 
-  function prettyDate(iso: string) {
-    const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
-  }
-
   if (authLoading || isLoading) {
     return <Loading label="Loading today's session..." />;
   }
@@ -129,7 +121,9 @@ export default function TodayPage() {
   return (
     <div className="page-shell">
       <div className="page-inner-narrow">
-        <PageHeader title="Today" subtitle={view ? prettyDate(view.date) : undefined} />
+        <PageHeader title="Today"
+          actions={user && <SyncStravaButton userId={user.id} onSynced={load} />}
+        />
 
         {error && <div className="alert alert-danger mb-6">{error}</div>}
 

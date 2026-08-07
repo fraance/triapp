@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 /**
  * Tiny shared UI primitives.
  *
@@ -22,14 +24,19 @@ export function Loading({ label = "Loading..." }: { label?: string }) {
 export function PageHeader({
   title,
   subtitle,
+  actions,
 }: {
   title: string;
   subtitle?: string;
+  actions?: ReactNode;
 }) {
   return (
-    <header className="mb-6">
-      <h1 className="page-title">{title}</h1>
-      {subtitle && <p className="page-subtitle">{subtitle}</p>}
+    <header className="mb-6 flex items-start justify-between gap-3 flex-wrap">
+      <div>
+        <h1 className="page-title">{title}</h1>
+        {subtitle && <p className="page-subtitle">{subtitle}</p>}
+      </div>
+      {actions}
     </header>
   );
 }

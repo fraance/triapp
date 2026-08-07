@@ -8,6 +8,7 @@ import PlanCalendar, {
   CalendarWeek,
 } from "@/components/PlanCalendar";
 import SessionPhases from "@/components/SessionPhases";
+import SyncStravaButton from "@/components/SyncStravaButton";
 import { didTrain } from "@/lib/session-status";
 import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 import { warningsFor } from "@/lib/plan-warnings";
@@ -409,8 +410,9 @@ export default function PlanPage() {
       )}
 
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="mb-6">
+          <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
             <h1 className="page-title">Season plan</h1>
+            {user && <SyncStravaButton userId={user.id} onSynced={load} />}
         </div>
 
         {!season?.hasPlan && (
