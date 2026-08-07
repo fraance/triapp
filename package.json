@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "prisma migrate deploy && next start -H 0.0.0.0",
-    "test": "tsx tests/nav.test.mts && tsx tests/plan-draft.test.mts && tsx tests/session-status.test.mts && tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts && tsx tests/scheduler.test.mts && tsx tests/adaptation.test.mts && tsx tests/reschedule.test.mts && tsx tests/coach-chat.test.mts && tsx tests/periodisation.test.mts && tsx tests/decisions.test.mts && tsx tests/ui-data.test.mts && tsx tests/rebuild.test.mts && tsx tests/dedupe.test.mts && tsx tests/session-phases.test.mts",
+    "test": "tsx tests/nav.test.mts && tsx tests/plan-draft.test.mts && tsx tests/session-status.test.mts && tsx tests/persistence.test.mts && tsx tests/today.test.mts && tsx tests/strava.test.mts && tsx tests/improvements.test.mts && tsx tests/jobs.test.mts && tsx tests/athlete.test.mts && tsx tests/personal-bests.test.mts && tsx tests/prefill.test.mts && tsx tests/availability.test.mts && tsx tests/scheduler.test.mts && tsx tests/adaptation.test.mts && tsx tests/reschedule.test.mts && tsx tests/coach-chat.test.mts && tsx tests/periodisation.test.mts && tsx tests/decisions.test.mts && tsx tests/ui-data.test.mts && tsx tests/rebuild.test.mts && tsx tests/dedupe.test.mts && tsx tests/session-phases.test.mts && tsx tests/session-load.test.mts && tsx tests/sync-reconcile.test.mts && tsx tests/executed-edit.test.mts && tsx tests/schedule-intent.test.mts",
     "test:persistence": "tsx tests/persistence.test.mts",
     "test:today": "tsx tests/today.test.mts",
     "test:strava": "tsx tests/strava.test.mts",
@@ -31,7 +31,11 @@
     "test:ui": "tsx tests/ui-data.test.mts",
     "test:rebuild": "tsx tests/rebuild.test.mts",
     "test:dedupe": "tsx tests/dedupe.test.mts",
-    "test:phases": "tsx tests/session-phases.test.mts"
+    "test:phases": "tsx tests/session-phases.test.mts",
+    "test:load": "tsx tests/session-load.test.mts",
+    "test:sync-reconcile": "tsx tests/sync-reconcile.test.mts",
+    "test:executed-edit": "tsx tests/executed-edit.test.mts",
+    "test:schedule-intent": "tsx tests/schedule-intent.test.mts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "latest",

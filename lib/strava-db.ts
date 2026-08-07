@@ -218,6 +218,7 @@ export interface UserSyncResult {
   ok: boolean;
   fetched?: number;
   added?: number;
+  skipped?: number;
   error?: string;
 }
 
@@ -269,6 +270,7 @@ export async function syncUserIncremental(userId: string): Promise<UserSyncResul
       ok: true,
       fetched: result.fetched,
       added: result.added,
+      skipped: result.skipped,
     };
   } catch (error: any) {
     const message = error?.message || "Unknown error";

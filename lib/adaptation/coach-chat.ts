@@ -9,14 +9,32 @@
  * The LLM appears twice and decides nothing either time. Everything between is
  * reproducible from the stored `parsed` structure, which is why any change can
  * be explained months later.
+ *
+ * A third, narrower parse (`schedule-intent.ts`) recognizes direct scheduling
+ * instructions — "move Thursday's swim to Saturday" — under the same rule: the
+ * model only identifies which listed session and date the athlete means, and
+ * the move is validated and written by `applyMoves`, the exact guardrail-
+ * checked path the calendar's drag-and-drop uses. The model never touches the
+ * database directly.
  */
 import { prisma } from "../prisma";
 import OpenAI from "openai";
 import { parseAthleteMessage, ParsedReport } from "./intent-parser";
+import { parseScheduleRequest, ScheduleSession } from "./schedule-intent";
 import { assessRisk, RiskAssessment } from "./risk";
 import { planOpportunity, OpportunityPlan } from "./opportunity";
 import { adaptPlanForUser, AdaptationOutcome } from "./engine";
+import { applyMoves } from "../reschedule";
 import { localISO } from "./load-vector";
+
+export interface ScheduleOutcome {
+  /** A scheduling instruction was recognized in the message at all. */
+  attempted: boolean;
+  kind: "move" | "swap" | "none";
+  applied: boolean;
+  changes: Array<{ discipline: string; type: string; fromDate: string; toDate: string }>;
+  rejectedReason: string | null;
+}
 
 export interface CoachReply {
   understood: boolean;
@@ -26,6 +44,7 @@ export interface CoachReply {
   opportunity: OpportunityPlan | null;
   outcome: AdaptationOutcome | null;
   reportId: string | null;
+  scheduleOutcome: ScheduleOutcome;
 }
 
 function startOfDay(d: Date): Date {
@@ -52,6 +71,7 @@ async function upcomingPlan(userId: string, now: Date): Promise<{
   raceDate: string | null;
   daysToRace: number | null;
   sessions: Array<{
+    id: string;
     date: string;
     day: string;
     discipline: string;
@@ -97,6 +117,7 @@ async function upcomingPlan(userId: string, now: Date): Promise<{
     },
     orderBy: { scheduledDate: "asc" },
     select: {
+      id: true,
       scheduledDate: true,
       discipline: true,
       type: true,
@@ -112,6 +133,7 @@ async function upcomingPlan(userId: string, now: Date): Promise<{
     raceDate: raceDate ? localISO(raceDate) : null,
     daysToRace,
     sessions: rows.map((r) => ({
+      id: r.id,
       date: localISO(r.scheduledDate!),
       day: WEEKDAYS[r.scheduledDate!.getDay()],
       discipline: r.discipline,
@@ -121,6 +143,88 @@ async function upcomingPlan(userId: string, now: Date): Promise<{
       isAnchor: r.isAnchor,
       status: r.status,
     })),
+  };
+}
+
+const NO_SCHEDULE_OUTCOME: ScheduleOutcome = {
+  attempted: false,
+  kind: "none",
+  applied: false,
+  changes: [],
+  rejectedReason: null,
+};
+
+/**
+ * Turns a parsed scheduling instruction into an actual move via `applyMoves`
+ * — the identical guardrail-checked path the calendar's drag-and-drop uses.
+ * Nothing here decides whether the move is a good idea; `applyMoves` already
+ * rejects anything that breaks a hard rule (a settled session, a past date).
+ */
+export async function resolveScheduleAction(
+  userId: string,
+  action: Awaited<ReturnType<typeof parseScheduleRequest>>,
+  tokenToSession: Map<string, { id: string; discipline: string; type: string; date: string }>,
+  now: Date,
+  dryRun: boolean | undefined
+): Promise<ScheduleOutcome> {
+  if (action.kind === "none") return NO_SCHEDULE_OUTCOME;
+
+  if (action.kind === "move") {
+    const sess = tokenToSession.get(action.sessionToken!);
+    if (!sess) {
+      return {
+        attempted: true, kind: "move", applied: false, changes: [],
+        rejectedReason: "I couldn't match that to one of your sessions.",
+      };
+    }
+    const result = await applyMoves(
+      userId,
+      [{ sessionId: sess.id, toDate: action.toDate! }],
+      now,
+      { dryRun, trigger: "coach_chat" }
+    );
+    const ok = result.rejected.length === 0;
+    return {
+      attempted: true,
+      kind: "move",
+      applied: ok && !dryRun,
+      changes: ok
+        ? [{ discipline: sess.discipline, type: sess.type, fromDate: sess.date, toDate: action.toDate! }]
+        : [],
+      rejectedReason: ok ? null : result.rejected[0]?.reason ?? "That move isn't possible.",
+    };
+  }
+
+  // swap
+  const a = tokenToSession.get(action.sessionToken!);
+  const b = tokenToSession.get(action.otherToken!);
+  if (!a || !b) {
+    return {
+      attempted: true, kind: "swap", applied: false, changes: [],
+      rejectedReason: "I couldn't match that to two of your sessions.",
+    };
+  }
+  const result = await applyMoves(
+    userId,
+    [
+      { sessionId: a.id, toDate: b.date },
+      { sessionId: b.id, toDate: a.date },
+    ],
+    now,
+    { dryRun, trigger: "coach_chat" }
+  );
+  const ok = result.rejected.length === 0;
+  return {
+    attempted: true,
+    kind: "swap",
+    applied: ok && !dryRun,
+    changes: ok
+      ? [
+          { discipline: a.discipline, type: a.type, fromDate: a.date, toDate: b.date },
+          { discipline: b.discipline, type: b.type, fromDate: b.date, toDate: a.date },
+        ]
+      : [],
+    rejectedReason: ok ? null : result.rejected[0]?.reason ?? "That swap isn't possible.",
   };
 }
 
@@ -142,17 +246,49 @@ export async function handleAthleteMessage(
   // is a report or a question.
   const plan = await upcomingPlan(userId, now);
 
-  const parsed = await parseAthleteMessage(text, today);
+  // Tokens are opaque and regenerated every call, never a real id — so the
+  // model can never accidentally (or by hallucination) reference a session
+  // that isn't genuinely one of the athlete's own, listed right here.
+  const scheduleSessions: ScheduleSession[] = plan.sessions.map((s, i) => ({
+    token: `S${i + 1}`,
+    date: s.date,
+    day: s.day,
+    discipline: s.discipline,
+    type: s.type,
+    isAnchor: s.isAnchor,
+  }));
+  const tokenToSession = new Map(
+    plan.sessions.map((s, i) => [`S${i + 1}`, s])
+  );
+
+  const [parsed, scheduleAction] = await Promise.all([
+    parseAthleteMessage(text, today),
+    parseScheduleRequest(text, today, scheduleSessions),
+  ]);
+
+  // Apply any recognized scheduling instruction before anything else reasons
+  // about the plan, so a physiological report in the same message (a rest
+  // day AND a sore calf) is assessed against the plan as it now stands.
+  const scheduleOutcome = await resolveScheduleAction(
+    userId,
+    scheduleAction,
+    tokenToSession,
+    now,
+    opts.dryRun
+  );
 
   // ---- A question, or anything with nothing actionable -------------------
   // The engine decides plan changes; a question changes nothing. But the reply
   // must still read like a coach answering a coach — not a validation error.
-  if (parsed.empty) {
+  // A recognized scheduling instruction IS something actionable, even when the
+  // message carries no physiological signal at all ("move my swim to Friday").
+  if (parsed.empty && !scheduleOutcome.attempted) {
     const fallback =
       "I could not find anything in that I can act on. " +
-      "Tell me how you are feeling, or what you will not have access to and " +
-      "for how long — for example \u201cno bike until Thursday\u201d or " +
-      "\u201cslept badly, left calf is sore\u201d.";
+      "Tell me how you are feeling, what you will not have access to and " +
+      "for how long, or ask me to move or swap a session — for example " +
+      "\u201cno bike until Thursday\u201d, \u201cslept badly, left calf is " +
+      "sore\u201d, or \u201cmove Thursday's swim to Saturday\u201d.";
     const reply = await composeCoachReply({
       text,
       today,
@@ -162,6 +298,7 @@ export async function handleAthleteMessage(
       opportunity: null,
       outcome: null,
       plan,
+      scheduleOutcome,
       fallback,
     });
 
@@ -188,6 +325,7 @@ export async function handleAthleteMessage(
       opportunity: null,
       outcome: null,
       reportId,
+      scheduleOutcome,
     };
   }
 
@@ -282,7 +420,8 @@ export async function handleAthleteMessage(
     opportunity,
     outcome,
     plan,
-    fallback: deterministicReply({ risk, opportunity, outcome }),
+    scheduleOutcome,
+    fallback: deterministicReply({ risk, opportunity, outcome, scheduleOutcome }),
   });
 
   if (reportId && !opts.dryRun) {
@@ -300,6 +439,7 @@ export async function handleAthleteMessage(
     opportunity,
     outcome,
     reportId,
+    scheduleOutcome,
   };
 }
 
@@ -400,10 +540,24 @@ function deterministicReply(args: {
   risk: RiskAssessment | null;
   opportunity: OpportunityPlan | null;
   outcome: AdaptationOutcome | null;
+  scheduleOutcome?: ScheduleOutcome;
 }): string {
-  const { risk, opportunity, outcome } = args;
+  const { risk, opportunity, outcome, scheduleOutcome } = args;
 
   const deterministic: string[] = [];
+
+  if (scheduleOutcome?.attempted) {
+    if (scheduleOutcome.changes.length > 0) {
+      for (const c of scheduleOutcome.changes) {
+        deterministic.push(
+          `Moved your ${c.discipline} ${c.type} from ${c.fromDate} to ${c.toDate}.`
+        );
+      }
+    } else if (scheduleOutcome.rejectedReason) {
+      deterministic.push(`I couldn't make that change: ${scheduleOutcome.rejectedReason}`);
+    }
+  }
+
   if (risk?.decision === "rest") {
     deterministic.push("Today becomes a rest day.");
   } else if (risk?.decision === "easy_only") {
@@ -449,8 +603,11 @@ const COACH_SYSTEM_PROMPT = [
   "- Ground every claim in the facts given below. NEVER invent sessions, dates,",
   "  numbers, paces, or training history.",
   "- If the athlete asked a question, answer it directly, using the plan shown.",
-  "- If the plan was changed, explain plainly what changed and why, based only on",
-  "  the listed changes and the reasons given.",
+  "- If the plan was changed (by the engine OR because they asked you to move or",
+  "  swap a session), explain plainly what changed and why, based only on the",
+  "  listed changes and the reasons given.",
+  "- If they asked for a move or swap that could not be done, say so plainly and",
+  "  give the reason given — do not pretend it happened.",
   "- If nothing was changed, say so naturally and, where useful, what the athlete",
   "  can do instead.",
   "- 2-5 sentences. Plain and direct. No cheerleading, no bullet points, no",
@@ -459,8 +616,9 @@ const COACH_SYSTEM_PROMPT = [
 
 /**
  * Composes the reply conversationally. The plan changes were decided by the
- * deterministic engine; this LLM only phrases the answer and can handle plain
- * questions ("should I do a brick tomorrow?") that the engine never sees.
+ * deterministic engine (or, for a move/swap, by `applyMoves`); this LLM only
+ * phrases the answer and can handle plain questions ("should I do a brick
+ * tomorrow?") that neither of those ever sees.
  */
 async function composeCoachReply(args: {
   text: string;
@@ -471,13 +629,14 @@ async function composeCoachReply(args: {
   opportunity: OpportunityPlan | null;
   outcome: AdaptationOutcome | null;
   plan: Awaited<ReturnType<typeof upcomingPlan>>;
+  scheduleOutcome: ScheduleOutcome;
   fallback: string;
 }): Promise<string> {
-  const { text, today, parsed, risk, opportunity, outcome, plan, fallback } = args;
+  const { text, today, parsed, risk, opportunity, outcome, plan, scheduleOutcome, fallback } = args;
   if (!process.env.OPENAI_API_KEY) return fallback;
 
   const changes = outcome?.changes ?? [];
-  const reasoned = deterministicReply({ risk, opportunity, outcome });
+  const reasoned = deterministicReply({ risk, opportunity, outcome, scheduleOutcome });
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -537,6 +696,16 @@ async function composeCoachReply(args: {
                   : outcome?.outcome === "rejected_hysteresis"
                     ? "A change was possible but too small to be worth disrupting the week."
                     : null,
+              // A direct move/swap the athlete asked for by name — distinct
+              // from the engine's own reshaping above.
+              requestedScheduleChange: scheduleOutcome.attempted
+                ? {
+                    kind: scheduleOutcome.kind,
+                    applied: scheduleOutcome.changes.length > 0,
+                    changes: scheduleOutcome.changes,
+                    couldNotBecause: scheduleOutcome.rejectedReason,
+                  }
+                : "the athlete did not ask to move or swap anything",
               thePlan: plan.hasPlan
                 ? plan.sessions.map(
                     (s) =>

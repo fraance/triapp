@@ -150,7 +150,8 @@ export function nominalDate(
 export async function applyMoves(
   userId: string,
   moves: SessionMove[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  opts: { dryRun?: boolean; trigger?: string } = {}
 ): Promise<RescheduleResult> {
   if (moves.length === 0) {
     return { applied: false, moved: 0, rejected: [], warnings: [] };
@@ -279,6 +280,12 @@ export async function applyMoves(
     })
   );
 
+  // A preview: every move is legal, but nothing is written. Lets a caller
+  // (the coach chat) describe what WOULD happen before committing to it.
+  if (opts.dryRun) {
+    return { applied: false, moved: resolved.length, rejected: [], warnings };
+  }
+
   // Snapshot, then write, in one transaction so a failure can't leave the plan
   // half-moved with no record of where it came from.
   const version = await prisma.$transaction(async (tx) => {
@@ -314,8 +321,8 @@ export async function applyMoves(
         userId,
         planId: plan.id,
         versionId: snapshot.id,
-        trigger: "manual_drag",
-        cause: { movedBy: "athlete", moves: resolved.length },
+        trigger: opts.trigger ?? "manual_drag",
+        cause: { movedBy: opts.trigger ? "coach_chat" : "athlete", moves: resolved.length },
         diff: {
           moved: resolved.map((r) => ({ id: r.id, from: r.from, to: r.to })),
         },

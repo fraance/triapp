@@ -84,6 +84,14 @@ export async function POST(req: NextRequest) {
         : null,
       changes: result.outcome?.changes ?? [],
       outcome: result.outcome?.outcome ?? null,
+      scheduleChange: result.scheduleOutcome.attempted
+        ? {
+            kind: result.scheduleOutcome.kind,
+            applied: result.scheduleOutcome.changes.length > 0,
+            changes: result.scheduleOutcome.changes,
+            rejectedReason: result.scheduleOutcome.rejectedReason,
+          }
+        : null,
     });
   } catch (error: any) {
     console.error("Coach chat failed:", error);

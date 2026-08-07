@@ -413,6 +413,62 @@ export async function updateSessionStatus(
   });
 }
 
+/**
+ * Lets the athlete correct what a session that already happened actually was
+ * — Strava can see duration and effort, but has no idea a prescribed 6x3
+ * became a 3x3. Only a session they actually trained (`didTrain`) can be
+ * corrected; nothing else has a "what actually happened" to revise.
+ *
+ * When the session is evidenced by a Strava activity, the correction is also
+ * written back onto that activity's `estimatedTss`. Every load calculation
+ * the engine runs — chronic/acute EWMA, ramp budgets, the coach's physiology
+ * read — reads `stravaActivity` directly, never the plan row, so leaving the
+ * two numbers to disagree would mean the correction never reached the
+ * algorithm the athlete is trying to inform.
+ */
+export async function updateExecutedSession(
+  sessionId: string,
+  edit: { actualTss?: number | null; athleteNote?: string | null }
+) {
+  const session = await prisma.plannedSession.findUnique({ where: { id: sessionId } });
+  if (!session) throw new Error("Session not found");
+  if (!didTrain(session.status)) {
+    throw new Error(
+      "Only a session the athlete actually trained can be corrected"
+    );
+  }
+
+  const data: { actualTss?: number; athleteNote?: string | null } = {};
+  if (edit.actualTss !== undefined && edit.actualTss !== null) {
+    if (!Number.isFinite(edit.actualTss) || edit.actualTss < 0) {
+      throw new Error("actualTss must be a non-negative number");
+    }
+    data.actualTss = Math.round(edit.actualTss);
+  }
+  if (edit.athleteNote !== undefined) {
+    data.athleteNote = edit.athleteNote ? edit.athleteNote.trim().slice(0, 500) || null : null;
+  }
+
+  const updated = await prisma.plannedSession.update({
+    where: { id: sessionId },
+    data,
+  });
+
+  if (data.actualTss !== undefined && session.sourceActivityId) {
+    await prisma.stravaActivity
+      .update({
+        where: { id: session.sourceActivityId },
+        data: { estimatedTss: data.actualTss },
+      })
+      .catch(() => {
+        // The activity may have been removed independently (a Strava
+        // deletion, a disconnect); the plan-side correction still stands.
+      });
+  }
+
+  return updated;
+}
+
 // ---- "Today" view -------------------------------------------------------
 
 export interface DaySession {
@@ -432,6 +488,8 @@ export interface DaySession {
   day: string;
   week: number;
   date: string; // YYYY-MM-DD
+  /** The athlete's own correction to what actually happened, if they gave one. */
+  athleteNote: string | null;
 }
 
 export interface TodayView {
@@ -454,6 +512,25 @@ function toISODate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * What a session's "type" should read to the athlete.
+ *
+ * Reconciliation gives training with nothing on the plan the placeholder
+ * type "Unplanned" (see `reconcile.ts`) so the database always knows how it
+ * got there. Showing that word back to the athlete reads as the app not
+ * knowing what they did — it does not matter to them whether a session was
+ * planned or not, only that it happened, so the executed activity's own name
+ * (e.g. "Evening Ride") is shown instead whenever we have it.
+ */
+function displayTypeFor(
+  session: { type: string; sourceActivityId: string | null },
+  evidence: Map<string, { name: string }>
+): string {
+  if (session.type !== "Unplanned") return session.type;
+  const activity = session.sourceActivityId ? evidence.get(session.sourceActivityId) : null;
+  return activity?.name || "Done";
 }
 
 /**
@@ -492,6 +569,21 @@ export async function getTodayView(
 
   const planStart = plan.startDate ?? plan.createdAt;
 
+  // Only "Unplanned" rows ever need the evidence's real name (see
+  // `displayTypeFor`), and only those carry a `sourceActivityId` — so this
+  // stays a light query even on a long-running plan.
+  const unplannedSourceIds = plan.sessions
+    .filter((s) => s.type === "Unplanned" && s.sourceActivityId)
+    .map((s) => s.sourceActivityId!);
+  const evidence = new Map<string, { name: string }>();
+  if (unplannedSourceIds.length > 0) {
+    const activities = await prisma.stravaActivity.findMany({
+      where: { id: { in: unplannedSourceIds } },
+      select: { id: true, name: true },
+    });
+    for (const a of activities) evidence.set(a.id, a);
+  }
+
   // Attach a real calendar date to every session.
   //
   // `scheduledDate` wins where it exists. It is what the adaptation engine and
@@ -508,7 +600,7 @@ export async function getTodayView(
   const toDaySession = (item: { session: any; date: Date }): DaySession => ({
     id: item.session.id,
     discipline: item.session.discipline,
-    type: item.session.type,
+    type: displayTypeFor(item.session, evidence),
     duration: item.session.duration,
     tss: item.session.tss,
     actualTss: item.session.actualTss ?? null,
@@ -519,6 +611,7 @@ export async function getTodayView(
     day: item.session.day,
     week: weekNumberFor(planStart, item.date),
     date: toISODate(item.date),
+    athleteNote: item.session.athleteNote ?? null,
   });
 
   /**
@@ -719,6 +812,8 @@ export interface SeasonSession {
   pace: string;
   status: string;
   isAnchor: boolean;
+  /** The athlete's own correction to what actually happened, if they gave one. */
+  athleteNote: string | null;
 }
 
 export interface SeasonView {
@@ -765,6 +860,53 @@ export async function getSeasonView(
   const planStart = plan.startDate ?? plan.createdAt;
   const currentWeek = weekNumberFor(planStart, referenceDate);
 
+  // The executed evidence for any session marked done. A completed or unplanned
+  // session carries a `sourceActivityId`; its *actual* cost must be computed
+  // from that activity's TSS/intensity/duration, not from `tss` on the plan row
+  // (which is, and must stay, zero for unplanned training and prescribed for
+  // planned). Merchandising a done session at its prescribed value would show
+  // an all-zero load breakdown and hide what recovery actually demands.
+  const evidence = new Map<
+    string,
+    { discipline: string; name: string; estimatedTss: number | null; distance: number | null; elevationGain: number | null }
+  >();
+  const activitiesForEvidence = await prisma.stravaActivity.findMany({
+    where: { userId, startDate: { gte: planStart } },
+    select: {
+      id: true, discipline: true, name: true, estimatedTss: true,
+      distance: true, elevationGain: true,
+    },
+  });
+  for (const a of activitiesForEvidence) evidence.set(a.id, a);
+
+  /** Load a session is judged on: executed when it happened, else prescribed. */
+  const sessionLoadFor = (s: {
+    sourceActivityId: string | null;
+    discipline: string;
+    type: string;
+    tss: number;
+    actualTss: number | null;
+    status: string;
+  }) => {
+    const a = s.sourceActivityId ? evidence.get(s.sourceActivityId) : null;
+    if (a) {
+      return loadVectorFor({
+        discipline: a.discipline,
+        tss: a.estimatedTss ?? 0,
+        type: a.name,
+        distanceKm: a.distance ? a.distance / 1000 : null,
+        elevationGainM: a.elevationGain,
+      });
+    }
+    // No recorded activity (planned/adapted, or substituted→kept as baseline):
+    // value it at what it actually cost when trained, else at what was planned.
+    return loadVectorFor({
+      discipline: s.discipline,
+      tss: didTrain(s.status) ? (s.actualTss ?? s.tss) : s.tss,
+      type: s.type,
+    });
+  };
+
   // Group sessions by week.
   //
   // `scheduledDate` wins where it exists: it is what the adaptation engine and
@@ -783,16 +925,17 @@ export async function getSeasonView(
       day: s.day,
       date: toISODate(date),
       discipline: s.discipline,
-      type: s.type,
+      type: displayTypeFor(s, evidence),
       duration: s.duration,
       tss: s.tss,
       actualTss: s.actualTss ?? null,
       evidence: s.sourceActivityId ?? null,
-      load: loadVectorFor({ discipline: s.discipline, tss: s.tss, type: s.type }),
+      load: sessionLoadFor(s),
       instructions: s.instructions ?? "",
       pace: s.pace ?? "",
       status: s.status,
       isAnchor: s.isAnchor,
+      athleteNote: s.athleteNote ?? null,
     });
   }
   // Chronological within each week, so the calendar can render rows in order.

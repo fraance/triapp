@@ -14,6 +14,7 @@ interface DaySession {
   type: string;
   duration: string;
   tss: number;
+  actualTss: number | null;
   instructions: string;
   pace: string;
   status: string;
@@ -46,8 +47,22 @@ const DISCIPLINE_STYLE: Record<string, string> = {
 
 const STATUS_BADGE: Record<string, string> = {
   completed: "badge-success",
+  // It happened — whether it was on the plan or not makes no difference to
+  // the athlete, so it reads the same as anything else they completed.
+  unplanned: "badge-success",
+  substituted: "badge-warn",
+  missed: "badge-danger",
   skipped: "badge-muted",
   adapted: "badge-brand",
+};
+
+/** What the status badge says. Distinct from `STATUS_BADGE` (the styling)
+ * because the raw status word ("unplanned") reads like the app doesn't know
+ * what happened — the athlete only cares that it did. */
+const STATUS_LABEL: Record<string, string> = {
+  completed: "done",
+  unplanned: "done",
+  substituted: "trained something else",
 };
 
 export default function TodayPage() {
@@ -217,11 +232,12 @@ export default function TodayPage() {
                         <div className="mt-3 border-t border-gray-100 pt-3">
                           <div className="flex justify-between items-center mb-3">
                             <p className="text-sm text-gray-500">
-                              {s.duration} · {s.tss} TSS
+                              {s.duration} ·{" "}
+                              {s.actualTss !== null ? s.actualTss : s.tss} TSS
                             </p>
                             {s.status !== "planned" && (
                               <span className={`badge ${STATUS_BADGE[s.status] ?? "badge-muted"}`}>
-                                {s.status}
+                                {STATUS_LABEL[s.status] ?? s.status}
                               </span>
                             )}
                           </div>

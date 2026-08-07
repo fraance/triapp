@@ -20,7 +20,7 @@ import { reconcilePlanWithActivities } from "./adaptation/reconcile";
 const HOURS = 60 * 60 * 1000;
 
 /** How often the sync runs. */
-const INTERVAL_MS = Number(process.env.SYNC_INTERVAL_HOURS ?? 6) * HOURS;
+const INTERVAL_MS = Number(process.env.SYNC_INTERVAL_HOURS ?? 1) * HOURS;
 
 /** Wait after boot so startup isn't competing with the first requests. */
 const STARTUP_DELAY_MS = 30 * 1000;
@@ -29,8 +29,13 @@ const STARTUP_DELAY_MS = 30 * 1000;
  * An athlete is only synced if their last sync is older than this. Protects
  * Strava's rate limit when the server restarts repeatedly (deploys, crash
  * loops) and stops several instances duplicating each other's work.
+ *
+ * Kept short (not the old 3h): the manual "Sync" button now reconciles
+ * immediately, but an athlete who never taps it should still not be looking
+ * at hours-stale statuses. One well-behaved account costs Strava's rate limit
+ * nothing at this cadence.
  */
-const MIN_AGE_MS = Number(process.env.SYNC_MIN_AGE_HOURS ?? 3) * HOURS;
+const MIN_AGE_MS = Number(process.env.SYNC_MIN_AGE_HOURS ?? 1) * HOURS;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -47,6 +52,100 @@ export interface SyncRunResult {
   reconciled?: number;
   adapted?: number;
   durationMs?: number;
+}
+
+/**
+ * Reconciles and, unless disabled, adapts one athlete's plan against whatever
+ * Strava now holds.
+ *
+ * Pulled out so the bulk background job and a single athlete's manual "Sync"
+ * button run the exact same step after fetching activities — the plan
+ * showing what actually happened must never depend on which path triggered
+ * the sync, or the two silently drift apart (they did: the manual button and
+ * the Strava connect callback only ever synced raw activities and never
+ * reconciled, so a session could sit "planned" or "missed" for hours after
+ * the athlete could see their own ride on Strava).
+ */
+async function reconcileAndAdapt(
+  userId: string,
+  email: string | undefined,
+  trigger: string,
+  now?: Date
+): Promise<{ reconciled: number; adapted: boolean }> {
+  let reconciled = 0;
+  try {
+    const rec = await reconcilePlanWithActivities(userId, { now });
+    reconciled = rec.changes.length;
+    if (rec.changes.length > 0) {
+      console.log(
+        `[reconcile] ${email ?? userId}: ${rec.completed} completed, ` +
+          `${rec.substituted} substituted, ${rec.missed} missed`
+      );
+    }
+  } catch (e: any) {
+    console.error(`[reconcile] ${email ?? userId} failed: ${e?.message ?? e}`);
+  }
+
+  let adapted = false;
+  if (process.env.DISABLE_ADAPTATION !== "1") {
+    try {
+      const outcome = await adaptPlanForUser(userId, { now, trigger });
+      adapted = outcome.outcome === "applied";
+      if (adapted) {
+        console.log(
+          `[adaptation] ${email ?? userId}: ${outcome.changes?.length ?? 0} change(s) — ${outcome.explanation}`
+        );
+      }
+    } catch (e: any) {
+      console.error(`[adaptation] ${email ?? userId} failed: ${e?.message ?? e}`);
+    }
+  }
+
+  return { reconciled, adapted };
+}
+
+/**
+ * Syncs one athlete right now — an incremental Strava pull, then the same
+ * reconcile+adapt step the background job runs. This is what the manual
+ * "Sync" button calls, so an athlete never has to wait for the next
+ * background tick (up to several hours away) to see their own training
+ * reflected in the plan.
+ */
+export async function syncOneUserNow(
+  userId: string,
+  opts: { trigger?: string; now?: Date } = {}
+): Promise<{ fetched: number; added: number; skipped: number; reconciled: number; adapted: boolean }> {
+  const { syncUserIncremental } = await import("./strava-db");
+  const sync = await syncUserIncremental(userId);
+  if (!sync.ok) throw new Error(sync.error || "Strava sync failed");
+
+  const { reconciled, adapted } = await reconcileAndAdapt(
+    userId,
+    undefined,
+    opts.trigger ?? "manual_sync",
+    opts.now
+  );
+
+  return {
+    fetched: sync.fetched ?? 0,
+    added: sync.added ?? 0,
+    skipped: sync.skipped ?? 0,
+    reconciled,
+    adapted,
+  };
+}
+
+/**
+ * Reconciles and adapts a single athlete's plan without syncing first — for
+ * callers (like the Strava connect callback) that already ran their own sync
+ * and just need the plan brought in line with what it fetched.
+ */
+export async function reconcileAndAdaptUser(
+  userId: string,
+  trigger: string,
+  now?: Date
+): Promise<{ reconciled: number; adapted: boolean }> {
+  return reconcileAndAdapt(userId, undefined, trigger, now);
 }
 
 /**
@@ -90,42 +189,11 @@ export async function runSyncNow(
     // event-driven adaptation loop). Failures here must never fail the sync.
     let adapted = 0;
     let reconciled = 0;
-    const adaptationOff = process.env.DISABLE_ADAPTATION === "1";
     for (const r of summary.results) {
       if (!r.ok) continue;
-
-      // Reconciliation runs regardless of whether adaptation is enabled: the
-      // plan must always show what actually happened, even if we choose not to
-      // change anything in response.
-      try {
-        const rec = await reconcilePlanWithActivities(r.userId);
-        reconciled += rec.changes.length;
-        if (rec.changes.length > 0) {
-          console.log(
-            `[reconcile] ${r.email ?? r.userId}: ${rec.completed} completed, ` +
-              `${rec.substituted} substituted, ${rec.missed} missed`
-          );
-        }
-      } catch (e: any) {
-        console.error(
-          `[reconcile] ${r.email ?? r.userId} failed: ${e?.message ?? e}`
-        );
-      }
-
-      if (adaptationOff) continue;
-      try {
-        const outcome = await adaptPlanForUser(r.userId, { trigger: "strava_sync" });
-        if (outcome.outcome === "applied") {
-          adapted++;
-          console.log(
-            `[adaptation] ${r.email ?? r.userId}: ${outcome.changes?.length ?? 0} change(s) — ${outcome.explanation}`
-          );
-        }
-      } catch (e: any) {
-        console.error(
-          `[adaptation] ${r.email ?? r.userId} failed: ${e?.message ?? e}`
-        );
-      }
+      const outcome = await reconcileAndAdapt(r.userId, r.email, "strava_sync");
+      reconciled += outcome.reconciled;
+      if (outcome.adapted) adapted++;
     }
 
     const durationMs = Date.now() - started;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken } from "@/lib/strava";
 import { saveStravaToken, syncStravaActivities } from "@/lib/strava-db";
+import { reconcileAndAdaptUser } from "@/lib/scheduler";
 
 /**
  * Strava redirects here after the athlete approves access.
@@ -48,6 +49,15 @@ export async function GET(req: NextRequest) {
       imported = result.added;
     } catch (syncError) {
       console.error("Initial Strava sync failed:", syncError);
+    }
+
+    // A reconnect can happen with an existing plan already in progress —
+    // bring it in line with whatever history just arrived rather than
+    // leaving it stale until the next background sync.
+    try {
+      await reconcileAndAdaptUser(userId, "strava_connect");
+    } catch (reconcileError) {
+      console.error("Reconcile after connect failed:", reconcileError);
     }
 
     // Prefill everything we can now that we have their data.

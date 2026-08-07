@@ -8,6 +8,7 @@ import PlanCalendar, {
   CalendarWeek,
 } from "@/components/PlanCalendar";
 import SessionPhases from "@/components/SessionPhases";
+import { didTrain } from "@/lib/session-status";
 import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
 import { warningsFor } from "@/lib/plan-warnings";
 import {
@@ -42,6 +43,7 @@ interface SeasonSession {
   pace: string;
   status: string;
   isAnchor: boolean;
+  athleteNote: string | null;
 }
 
 interface SeasonWeek {
@@ -77,6 +79,57 @@ export default function PlanPage() {
   const [openSession, setOpenSession] = useState<any>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState>(emptyDraft({}));
+
+  // ---- Editing what a session actually was -------------------------------
+  const [editingExecuted, setEditingExecuted] = useState(false);
+  const [editTss, setEditTss] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [savingExecuted, setSavingExecuted] = useState(false);
+  const [executedError, setExecutedError] = useState<string | null>(null);
+
+  function openSessionDetail(sess: any) {
+    setEditingExecuted(false);
+    setExecutedError(null);
+    setEditTss(String(sess.actualTss ?? sess.tss ?? ""));
+    setEditNote(sess.athleteNote ?? "");
+    setOpenSession(sess);
+  }
+
+  async function saveExecuted() {
+    if (!user || !openSession) return;
+    setSavingExecuted(true);
+    setExecutedError(null);
+    try {
+      const tss = editTss.trim() === "" ? undefined : Number(editTss);
+      if (tss !== undefined && (!Number.isFinite(tss) || tss < 0)) {
+        throw new Error("Enter a TSS of 0 or more.");
+      }
+      const res = await fetch("/api/sessions/executed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          sessionId: openSession.id,
+          actualTss: tss,
+          athleteNote: editNote,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save.");
+      setMessage(
+        data.adapted
+          ? "Saved. The rest of the plan has been adjusted to match."
+          : "Saved."
+      );
+      setEditingExecuted(false);
+      setOpenSession(null);
+      await load();
+    } catch (e: any) {
+      setExecutedError(e.message || "Could not save.");
+    } finally {
+      setSavingExecuted(false);
+    }
+  }
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -124,6 +177,7 @@ export default function PlanPage() {
         pace: s.pace,
         load: s.load,
         date: at[s.id] ?? s.date,
+        athleteNote: s.athleteNote,
       }));
   }, [season, draft]);
 
@@ -416,7 +470,7 @@ export default function PlanPage() {
             )}
 
             <PlanCalendar
-              onOpen={(sess) => setOpenSession(sess)}
+              onOpen={(sess) => openSessionDetail(sess)}
               weeks={calendarWeeks}
               sessions={sessions}
               frozenUntil={season.frozenUntil}
@@ -465,15 +519,87 @@ export default function PlanPage() {
               </div>
 
               <p className="text-gray-700">
-                {openSession.duration} · {openSession.tss} load
+                {openSession.duration} ·{" "}
+                {openSession.actualTss != null
+                  ? openSession.actualTss
+                  : openSession.tss}{" "}
+                load
                 {openSession.actualTss != null &&
-                  openSession.actualTss !== openSession.tss && (
+                  openSession.actualTss !== openSession.tss &&
+                  openSession.tss > 0 && (
                     <span className="text-gray-500">
                       {" "}
-                      (actually {openSession.actualTss})
+                      (planned {openSession.tss})
                     </span>
                   )}
               </p>
+
+              {didTrain(openSession.status) && !editingExecuted && (
+                <div className="mt-2">
+                  {openSession.athleteNote && (
+                    <p className="text-sm text-gray-600 italic">
+                      "{openSession.athleteNote}"
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEditingExecuted(true)}
+                    className="text-sm text-indigo-600 underline mt-1"
+                  >
+                    Edit what you actually did
+                  </button>
+                </div>
+              )}
+
+              {editingExecuted && (
+                <div className="mt-3 border border-indigo-200 rounded p-3 bg-indigo-50/40">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Actual load (TSS)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editTss}
+                    onChange={(e) => setEditTss(e.target.value)}
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm mb-3"
+                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    What actually happened
+                  </label>
+                  <textarea
+                    value={editNote}
+                    onChange={(e) => setEditNote(e.target.value)}
+                    placeholder='e.g. "Did 3x3 instead of 6x3 — calf felt tight"'
+                    rows={3}
+                    className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  />
+                  {executedError && (
+                    <p className="text-sm text-red-600 mt-2">{executedError}</p>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={saveExecuted}
+                      disabled={savingExecuted}
+                      className="btn btn-primary text-sm"
+                    >
+                      {savingExecuted ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingExecuted(false)}
+                      disabled={savingExecuted}
+                      className="btn btn-secondary text-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Saving this updates your training load and lets the coach
+                    adjust the rest of the plan to match what really happened.
+                  </p>
+                </div>
+              )}
 
               {openSession.instructions && (
                 <div className="mt-4">

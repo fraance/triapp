@@ -44,6 +44,8 @@ export interface CalendarSession {
   pace?: string;
   /** Cost split by kind — impact is what a runner has to recover from. */
   load?: { metabolic: number; mechanical: number; neuromuscular: number; upper: number };
+  /** The athlete's own correction to what actually happened, if they gave one. */
+  athleteNote?: string | null;
 }
 
 export interface CalendarWeek {
@@ -99,9 +101,11 @@ function isLocked(status: string): boolean {
 function outcomeStyle(status: string): { label: string; className: string } {
   switch (status) {
     case "completed":
-      return { label: "completed", className: "text-green-700" };
+      return { label: "done", className: "text-green-700" };
+    // Whether it was on the plan or not makes no difference to the athlete —
+    // it happened, so it reads the same as anything else they completed.
     case "unplanned":
-      return { label: "unplanned — done", className: "text-green-700" };
+      return { label: "done", className: "text-green-700" };
     case "substituted":
       return { label: "trained something else", className: "text-amber-700" };
     case "missed":

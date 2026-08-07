@@ -79,9 +79,12 @@ function StravaPageInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Sync failed");
-      setMessage(
-        `Synced: ${data.added} new activities added (${data.skipped} already had).`
-      );
+      const parts = [`Synced: ${data.added} new activities added.`];
+      if (data.reconciled > 0) {
+        parts.push(`${data.reconciled} session${data.reconciled === 1 ? "" : "s"} updated to match.`);
+      }
+      if (data.adapted) parts.push("Plan adapted.");
+      setMessage(parts.join(" "));
       await load();
     } catch (e: any) {
       setMessage(e.message || "Sync failed");

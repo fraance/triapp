@@ -84,7 +84,7 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
         )
       );
       // The plan may have moved underneath us.
-      if (json.changes?.length) onChanged?.();
+      if (json.changes?.length || json.scheduleChange?.applied) onChanged?.();
       await load();
     } catch (e: any) {
       setError(e.message);
@@ -99,8 +99,8 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
     <div className="card card-pad">
       <h2 className="text-xl font-bold text-indigo-900 mb-1">Tell your coach</h2>
       <p className="text-gray-600 text-sm mb-3">
-        How you&apos;re feeling, or what you won&apos;t have access to. The plan
-        adjusts itself.
+        How you&apos;re feeling, what you won&apos;t have access to, or ask it to
+        move or swap a session. The plan adjusts itself.
       </p>
 
       {messages.length > 0 && (
@@ -144,7 +144,7 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
         <textarea
           className="textarea flex-1 resize-none"
           rows={2}
-          placeholder="e.g. no bike until Thursday, and my Achilles is a bit sore"
+          placeholder="e.g. no bike until Thursday, my Achilles is sore, or move Thursday's swim to Saturday"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

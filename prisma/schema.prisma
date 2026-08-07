@@ -355,6 +355,13 @@ model PlannedSession {
   actualTss     Int? // Actual TSS from a completed activity
   completedAt   DateTime?
 
+  /// The athlete's own correction to what a completed session actually was —
+  /// e.g. "did 3x3 instead of 6x3, calf felt tight". Strava can only see
+  /// duration and effort; it cannot know the prescribed set/rep structure was
+  /// cut short, so the athlete is the only source for this. Free text, never
+  /// inferred (project rule 2).
+  athleteNote   String?
+
   // --- Adaptation engine fields ---------------------------------------
   // Anchor sessions survive every daily adaptation (spec Part 3.2).
   isAnchor     Boolean   @default(false)
