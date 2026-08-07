@@ -6,7 +6,7 @@ import CoachChat from "@/components/CoachChat";
 import CoachDecisions from "@/components/CoachDecisions";
 import SessionPhases from "@/components/SessionPhases";
 import SyncStravaButton from "@/components/SyncStravaButton";
-import { Loading, PageHeader, Stat } from "@/components/ui";
+import { EmptyState, Loading, PageHeader, Stat } from "@/components/ui";
 import Link from "next/link";
 
 interface DaySession {
@@ -118,10 +118,21 @@ export default function TodayPage() {
     return <Loading label="Loading today's session..." />;
   }
 
+  // The date belongs in the mono register: it is a reading, not a heading.
+  const todayStamp = new Date()
+    .toLocaleDateString(undefined, {
+      weekday: "long",
+      day: "2-digit",
+      month: "short",
+    })
+    .toUpperCase();
+
   return (
     <div className="page-shell">
       <div className="page-inner-narrow">
-        <PageHeader title="Today"
+        <PageHeader
+          title="Today"
+          eyebrow={todayStamp}
           actions={user && <SyncStravaButton userId={user.id} onSynced={load} />}
         />
 
@@ -129,43 +140,45 @@ export default function TodayPage() {
 
         {/* No plan yet */}
         {view && !view.hasPlan && (
-          <div className="card card-pad p-8 text-center">
-            <p className="text-gray-700 mb-4">You don&apos;t have a training plan yet.</p>
-            <Link href="/profile" className="btn btn-primary btn-lg">
-              Generate my plan
-            </Link>
-          </div>
+          <EmptyState
+            title="No plan yet"
+            body="Once your season is generated, this is where each day's session lands."
+            action={
+              <Link href="/profile" className="btn btn-primary btn-lg">
+                Generate my plan
+              </Link>
+            }
+          />
         )}
 
         {/* Week context */}
         {view && view.hasPlan && view.inPlanRange && (
           <div className="card card-pad mb-6">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-5">
               <Stat
                 label="Week"
-                value={
-                  view.week != null
-                    ? `${view.week}${view.phase ? ` · ${view.phase}` : ""}`
-                    : "—"
-                }
+                value={view.week != null ? view.week : "—"}
+                hint={view.phase ?? undefined}
               />
               <Stat
-                label="Week load (TSS)"
-                value={`${view.weekTssCompleted} / ${view.weekTssPlanned}`}
+                label="Load · TSS"
+                value={`${view.weekTssCompleted}/${view.weekTssPlanned}`}
               />
               {view.daysUntilRace !== null && view.daysUntilRace >= 0 ? (
                 <Stat
                   label="Race in"
-                  value={`${view.daysUntilRace} days`}
+                  value={view.daysUntilRace}
+                  hint="days"
                 />
               ) : (
-                <Stat label="Race date" value={view.raceDate ?? "—"} />
+                <Stat label="Race date" value={view.raceDate ?? "—"} text />
               )}
             </div>
             {view.summary && (
-              <p className="text-gray-600 mt-4 border-t border-gray-100 pt-4">
-                {view.summary}
-              </p>
+              <>
+                <hr className="divider my-6" />
+                <p className="agent-voice-sm max-w-[62ch]">{view.summary}</p>
+              </>
             )}
           </div>
         )}
@@ -182,16 +195,18 @@ export default function TodayPage() {
 
         {/* Today's sessions */}
         {view && view.hasPlan && (
-          <section className="mb-8">
-            <h2 className="section-title mb-3">Today&apos;s session</h2>
+          <section className="mb-10">
+            <h2 className="section-title mb-4">Today&apos;s session</h2>
 
             {view.sessions.length === 0 ? (
               <div className="card card-pad">
-                <p className="text-gray-700 font-semibold">Rest day</p>
-                <p className="text-gray-600">Nothing scheduled for today. Recover well.</p>
+                <p className="text-gray-900 font-semibold">Rest day</p>
+                <p className="text-gray-600 mt-1">
+                  Nothing scheduled for today. Recover well.
+                </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {view.sessions.map((s) => {
                   const expanded = expandedId === s.id;
                   return (
@@ -200,22 +215,20 @@ export default function TodayPage() {
                         type="button"
                         onClick={() => setExpandedId(expanded ? null : s.id)}
                         aria-expanded={expanded}
-                        className="w-full flex items-center justify-between gap-3 text-left"
+                        className="w-full flex items-center justify-between gap-4 text-left"
                       >
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
                           <span
                             className={`badge ${DISCIPLINE_STYLE[s.discipline] ?? "badge-muted"}`}
                           >
                             {s.discipline}
                           </span>
-                          <span className="text-indigo-900 font-semibold truncate">
+                          <span className="text-gray-900 font-semibold tracking-[-0.01em] truncate">
                             {s.type}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
-                          <span className="text-sm text-gray-500">
-                            {s.duration}
-                          </span>
+                          <span className="meta meta-strong">{s.duration}</span>
                           <span className="text-xs text-gray-400">
                             {expanded ? "▾" : "▸"}
                           </span>
@@ -223,9 +236,10 @@ export default function TodayPage() {
                       </button>
 
                       {expanded && (
-                        <div className="mt-3 border-t border-gray-100 pt-3">
-                          <div className="flex justify-between items-center mb-3">
-                            <p className="text-sm text-gray-500">
+                        <div className="mt-5">
+                          <hr className="divider mb-5" />
+                          <div className="flex justify-between items-center mb-4">
+                            <p className="meta meta-strong">
                               {s.duration} ·{" "}
                               {s.actualTss !== null ? s.actualTss : s.tss} TSS
                             </p>
@@ -237,20 +251,21 @@ export default function TodayPage() {
                           </div>
 
                           {s.instructions && (
-                            <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 mb-3">
+                            <div className="well mb-4">
                               <SessionPhases instructions={s.instructions} />
                             </div>
                           )}
                           {s.pace && (
-                            <p className="text-gray-600 mb-4">
-                              <strong>Pace/Effort:</strong> {s.pace}
+                            <p className="text-gray-700 mb-5 text-[15px]">
+                              <span className="meta meta-strong">Pace / effort</span>{" "}
+                              <span className="ml-1">{s.pace}</span>
                             </p>
                           )}
 
                           {/* Two choices only: you did it, or you're not doing it.
                               "Skip" and "Undo" side by side read as the same thing. */}
                           {s.status === "planned" ? (
-                            <div className="flex gap-3">
+                            <div className="flex gap-2.5">
                               <button
                                 onClick={() => setStatus(s.id, "completed")}
                                 disabled={busyId === s.id}
@@ -272,7 +287,7 @@ export default function TodayPage() {
                               <button
                                 onClick={() => setStatus(s.id, "planned")}
                                 disabled={busyId === s.id}
-                                className="text-indigo-600 underline disabled:opacity-50"
+                                className="text-indigo-700 font-medium underline underline-offset-4 disabled:opacity-50"
                               >
                                 change
                               </button>
@@ -292,14 +307,14 @@ export default function TodayPage() {
         <CoachDecisions onChanged={load} />
 
         {/* Tell the coach what is going on, in your own words. */}
-        <div className="mb-8">
+        <div className="mb-10">
           <CoachChat onChanged={load} />
         </div>
 
         {/* Tomorrow preview */}
         {view && view.hasPlan && (
           <section className="mb-8">
-            <h2 className="section-title mb-3">Tomorrow</h2>
+            <h2 className="section-title mb-4">Tomorrow</h2>
             {view.tomorrow.length === 0 ? (
               <div className="card card-pad">
                 <p className="text-gray-600">Rest day</p>
@@ -311,13 +326,13 @@ export default function TodayPage() {
                     key={s.id}
                     className="card card-pad flex justify-between items-center gap-4"
                   >
-                    <div>
-                      <p className="font-semibold text-gray-800">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 tracking-[-0.01em] truncate">
                         {s.discipline} · {s.type}
                       </p>
-                      <p className="text-gray-500 text-sm">{s.duration}</p>
+                      <p className="meta mt-1">{s.duration}</p>
                     </div>
-                    <p className="text-gray-500 text-sm">TSS {s.tss}</p>
+                    <p className="meta meta-strong shrink-0">TSS {s.tss}</p>
                   </div>
                 ))}
               </div>

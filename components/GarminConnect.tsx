@@ -9,16 +9,17 @@
  */
 export function GarminConnect() {
   return (
-    <div className="card card-pad bg-gray-50">
-      <p className="font-semibold text-gray-800">Not connected</p>
-      <p className="text-gray-600 text-sm mt-1">
+    <div className="well">
+      <p className="eyebrow mb-2.5">
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+        Not connected
+      </p>
+      <p className="text-gray-700 text-[15px] leading-relaxed">
         Garmin access is pending approval of our developer application. Until
         Garmin grants access there is no way to link your account, so no Garmin
         data is being used anywhere in your plan.
       </p>
-      <p className="text-gray-500 text-sm mt-2">
-        In the meantime your training data comes from Strava.
-      </p>
+      <p className="hint">In the meantime your training data comes from Strava.</p>
     </div>
   );
 }

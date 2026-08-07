@@ -9,9 +9,9 @@ const input = "input";
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="label">{label}</label>
       {children}
-      {hint && <p className="text-xs text-gray-500 mt-1">{hint}</p>}
+      {hint && <p className="hint">{hint}</p>}
     </div>
   );
 }
@@ -118,7 +118,8 @@ export default function RacePage() {
   return (
     <div className="page-shell">
       <div className="page-inner-narrow">
-        <header className="mb-6">
+        <header className="mb-8 sm:mb-10">
+          <p className="eyebrow mb-3">Me · Target event</p>
           <h1 className="page-title">Your race</h1>
           <p className="page-subtitle">
             The course decides the training. Tell us the race and we&apos;ll try
@@ -139,7 +140,7 @@ export default function RacePage() {
 
         {sources.length > 0 && !notFound && (
           <section className="card card-pad mb-6">
-            <h2 className="text-lg font-bold text-indigo-900 mb-2">
+            <h2 className="section-title mb-2">
               {usedWeb ? "Sources found on the web" : "Sources"}
             </h2>
             <ul className="list-disc ml-5 text-sm space-y-1">
@@ -151,7 +152,7 @@ export default function RacePage() {
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="hint">
               Open these to verify the figures before confirming.
             </p>
           </section>
@@ -166,7 +167,7 @@ export default function RacePage() {
         )}
 
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Which race?</h2>
+          <h2 className="section-title mb-4">Which race?</h2>
           <div className="grid md:grid-cols-2 gap-4 mb-4">
             <Field label="Race name" hint="e.g. Ironman 70.3 Nice">
               <input className={input} value={r.raceName ?? ""} onChange={(e) => set("raceName", e.target.value)} />
@@ -187,15 +188,15 @@ export default function RacePage() {
           <button onClick={research} disabled={researching} className="btn btn-primary">
             {researching ? "Looking up the course..." : "Look up this race for me"}
           </button>
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="hint">
             We&apos;ll fill in what we can and ask you about the rest. Always check
             the results — never assume they&apos;re right.
           </p>
         </section>
 
         {questions.length > 0 && (
-          <section className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-amber-400">
-            <h2 className="text-xl font-bold text-indigo-900 mb-2">
+          <section className="rounded-[2rem] bg-amber-50 p-6 sm:p-8 mb-6 shadow-sm">
+            <h2 className="section-title mb-2">
               We couldn&apos;t work these out — can you help?
             </h2>
             {unknown.length > 0 && (
@@ -208,7 +209,7 @@ export default function RacePage() {
         )}
 
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Swim</h2>
+          <h2 className="section-title mb-4">Swim</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Environment">
               <select className={input} value={r.swimEnvironment ?? ""} onChange={(e) => set("swimEnvironment", e.target.value)}>
@@ -233,7 +234,7 @@ export default function RacePage() {
         </section>
 
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Bike course</h2>
+          <h2 className="section-title mb-4">Bike course</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <Field label="Profile">
               <select className={input} value={r.bikeCourseType ?? ""} onChange={(e) => set("bikeCourseType", e.target.value)}>
@@ -249,7 +250,7 @@ export default function RacePage() {
         </section>
 
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Run course</h2>
+          <h2 className="section-title mb-4">Run course</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Profile">
               <select className={input} value={r.runCourseType ?? ""} onChange={(e) => set("runCourseType", e.target.value)}>
@@ -271,7 +272,7 @@ export default function RacePage() {
         </section>
 
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Expected conditions</h2>
+          <h2 className="section-title mb-4">Expected conditions</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Temperature (°C)">
               <input type="number" className={input} value={r.expectedTempC ?? ""} onChange={(e) => set("expectedTempC", numOrNull(e.target.value))} />

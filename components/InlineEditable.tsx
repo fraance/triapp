@@ -64,14 +64,14 @@ export default function InlineEditable({
           e.stopPropagation();
         }}
         className={
-          "group/editable cursor-text text-left rounded px-0.5 -mx-0.5 " +
-          "hover:bg-gray-100 transition-colors " +
+          "group/editable cursor-text text-left rounded-lg px-1 -mx-1 " +
+          "hover:bg-gray-50 transition-colors " +
           className
         }
         aria-label={label ? `Edit ${label}` : "Click to edit"}
         title={label ? `Click to edit ${label}` : "Click to edit"}
       >
-        <span className="border-b border-dotted border-gray-400 group-hover/editable:border-indigo-500">
+        <span className="border-b border-dotted border-gray-300 group-hover/editable:border-indigo-500">
           {value || (
             <span className="text-gray-400 italic">{placeholder ?? "—"}</span>
           )}
@@ -89,8 +89,8 @@ export default function InlineEditable({
     onKeyDown,
     placeholder,
     className:
-      "border border-indigo-300 rounded px-1 py-0.5 text-inherit " +
-      "outline-none focus:ring-1 focus:ring-indigo-400 " +
+      "bg-gray-50 rounded-lg px-2 py-1 text-inherit w-full " +
+      "outline-none ring-1 ring-indigo-300 focus:ring-2 focus:ring-indigo-500 " +
       className,
     onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
   };

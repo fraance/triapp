@@ -100,7 +100,8 @@ export default function DocumentsPage() {
   return (
     <div className="page-shell">
       <div className="page-inner-narrow">
-        <header className="mb-6">
+        <header className="mb-8 sm:mb-10">
+          <p className="eyebrow mb-3">Settings · Documents</p>
           <h1 className="page-title">
             Context for your coach
           </h1>
@@ -130,16 +131,16 @@ export default function DocumentsPage() {
 
         {docs.length > 0 && (
           <div className="card card-pad">
-            <h2 className="text-xl font-bold text-indigo-900 mb-4">
+            <h2 className="section-title mb-4">
               Uploaded files ({docs.length})
             </h2>
             <div className="space-y-4">
               {docs.map((d) => (
-                <div key={d.id} className="border border-gray-200 rounded p-4">
+                <div key={d.id} className="well">
                   <div className="flex justify-between items-start gap-4 mb-2">
                     <div>
-                      <p className="font-semibold text-gray-800">{d.filename}</p>
-                      <p className="text-sm text-gray-500">
+                      <p className="font-semibold text-gray-900 tracking-[-0.01em]">{d.filename}</p>
+                      <p className="meta mt-1">
                         {d.fileType.toUpperCase()} ·{" "}
                         {d.rowCount ? `${d.rowCount} rows · ` : ""}
                         {new Date(d.createdAt).toLocaleDateString()}
@@ -149,7 +150,7 @@ export default function DocumentsPage() {
                       <button
                         onClick={() => toggle(d)}
                         className={`btn btn-sm ${
-                          d.includeInAi ? "bg-green-100 text-green-800" : "bg-gray-200 text-gray-600"
+                          d.includeInAi ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
                         }`}
                       >
                         {d.includeInAi ? "Used by coach" : "Ignored"}

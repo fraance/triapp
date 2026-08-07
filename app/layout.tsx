@@ -1,8 +1,38 @@
 import type { Metadata, Viewport } from "next";
+import { Archivo, JetBrains_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import Nav from "@/components/Nav";
 import AuthGuard from "@/components/AuthGuard";
+
+/**
+ * Three typefaces, three jobs. See the header comment in globals.css.
+ *
+ * Archivo carries the `wdth` axis, which is the whole point of choosing it:
+ * display headings run at ~115-118% width for the heavy, extended, editorial
+ * look, while the same file serves normal-width UI text. One download, two
+ * registers.
+ */
+const archivo = Archivo({
+  subsets: ["latin"],
+  axes: ["wdth"],
+  display: "swap",
+  variable: "--font-archivo",
+});
+
+/** The coach's speaking voice, and only that. */
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-newsreader",
+});
+
+/** Measurements: TSS, durations, dates, confidence, source counts. */
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-jetbrains-mono",
+});
 
 export const metadata: Metadata = {
   title: "TriApp",
@@ -34,7 +64,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#4f46e5",
+  themeColor: "#f3f0ea",
 };
 
 export default function RootLayout({
@@ -43,12 +73,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${archivo.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
+    >
       <body>
         <AuthProvider>
           <Nav />
-          {/* Bottom padding clears the mobile tab bar. */}
-          <div className="pb-20 sm:pb-0">
+          {/* Bottom padding clears the floating mobile tab bar. */}
+          <div className="pb-28 sm:pb-0">
             <AuthGuard>{children}</AuthGuard>
           </div>
         </AuthProvider>

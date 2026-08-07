@@ -12,6 +12,7 @@ import SyncStravaButton from "@/components/SyncStravaButton";
 import InlineEditable from "@/components/InlineEditable";
 import { didTrain } from "@/lib/session-status";
 import UnsavedChangesGuard from "@/components/UnsavedChangesGuard";
+import { EmptyState, Loading } from "@/components/ui";
 import { warningsFor } from "@/lib/plan-warnings";
 import {
   DraftState,
@@ -376,26 +377,23 @@ export default function PlanPage() {
   // ---- Render -----------------------------------------------------------
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">Loading your plan...</p>
-      </div>
-    );
+    return <Loading label="Loading your plan..." />;
   }
 
   return (
     <div className="page-shell">
-      {/* Editing toolbar. Only appears once there is something to lose. */}
+      {/* Editing toolbar. Only appears once there is something to lose, and
+          floats rather than clamping to the viewport edge. */}
       {dirty && (
-        <div className="sticky top-0 z-30 bg-white border-b border-indigo-200 shadow-sm">
-          <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-2">
-            <span className="text-sm text-indigo-900 font-medium">
+        <div className="sticky top-3 z-30 mb-6">
+          <div className="max-w-4xl mx-auto floating px-4 py-2 flex items-center gap-2">
+            <span className="meta meta-strong">
               {netMoves(draft).length} unsaved
             </span>
             {warnings.length > 0 && (
               <span
                 title={warnings.map((w) => w.detail).join("\n")}
-                className="text-sm text-amber-700 font-medium"
+                className="badge badge-warn"
               >
                 ⚠ {warnings.length}
               </span>
@@ -436,22 +434,25 @@ export default function PlanPage() {
         </div>
       )}
 
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
-            <h1 className="page-title">Season plan</h1>
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-8 sm:mb-10 flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <p className="eyebrow mb-3">Plan · Full season</p>
+              <h1 className="page-title">Season plan</h1>
+            </div>
             {user && <SyncStravaButton userId={user.id} onSynced={load} />}
         </div>
 
         {!season?.hasPlan && (
-          <div className="card card-pad p-8 text-center">
-            <p className="text-gray-700 mb-4">You don&apos;t have a plan yet.</p>
-            <Link
-              href="/profile"
-              className="btn btn-primary btn-lg"
-            >
-              Generate my plan
-            </Link>
-          </div>
+          <EmptyState
+            title="No plan yet"
+            body="Generate a season and every week from here to race day appears in this view."
+            action={
+              <Link href="/profile" className="btn btn-primary btn-lg">
+                Generate my plan
+              </Link>
+            }
+          />
         )}
 
         {season?.hasPlan && (
@@ -519,33 +520,34 @@ export default function PlanPage() {
             library — it only has to be readable and dismissable. */}
         {openSession && (
           <div
-            className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-gray-900/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50"
             onClick={() => setOpenSession(null)}
           >
             <div
-              className="bg-white rounded-lg shadow-lg max-w-lg w-full p-5 max-h-[85vh] overflow-y-auto"
+              className="card max-w-lg w-full p-6 sm:p-7 max-h-[85vh] overflow-y-auto shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-xl font-bold text-indigo-900">
+                  <p className="eyebrow mb-2">Session detail</p>
+                  <h3 className="section-title">
                     {openSession.discipline}
                     {openSession.isAnchor && (
                       <span className="text-indigo-600" title="Key session"> ★</span>
                     )}
                   </h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <button
                     onClick={() => void copySession(openSession)}
-                    className="text-sm text-indigo-600 hover:text-indigo-800 px-2 py-1"
+                    className="btn btn-ghost btn-sm"
                     aria-label="Copy workout description"
                   >
                     {copied ? "Copied ✓" : "Copy"}
                   </button>
                   <button
                     onClick={() => setOpenSession(null)}
-                    className="text-gray-500 px-2"
+                    className="btn btn-ghost btn-sm"
                     aria-label="Close"
                   >
                     ✕
@@ -601,13 +603,9 @@ export default function PlanPage() {
 
 {didTrain(openSession.status) && (
                 <div className="mt-4">
-                  <p className="font-semibold text-gray-800 mb-1">
-                    What actually happened
-                  </p>
+                  <p className="eyebrow mb-3">What actually happened</p>
                   <div className="mb-2">
-                    <p className="text-xs text-gray-500 mb-1">
-                      How hard was it, compared to planned?
-                    </p>
+                    <p className="label">How hard was it, compared to planned?</p>
                     <InlineEditable
                       value={openSession.difficulty ?? ""}
                       onSave={(v) => ed({ difficulty: v })}
@@ -616,9 +614,7 @@ export default function PlanPage() {
                     />
                   </div>
                   <div className="mb-2">
-                    <p className="text-xs text-gray-500 mb-1">
-                      What did you notice in the body?
-                    </p>
+                    <p className="label">What did you notice in the body?</p>
                     <InlineEditable
                       value={openSession.bodyNote ?? ""}
                       onSave={(v) => ed({ bodyNote: v })}
@@ -634,7 +630,7 @@ export default function PlanPage() {
                     multiline
                     label="what actually happened"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="hint">
                     Edit any of the figures above: the duration or load.
                     The load number — not these notes — is what your training load
                     and the rest of the plan are calculated from, so adjust it
@@ -648,7 +644,7 @@ export default function PlanPage() {
 
               {openSession.instructions && (
                 <div className="mt-4">
-                  <p className="font-semibold text-gray-800 mb-1">
+                  <p className="eyebrow mb-3">
                     {openSession.athleteNote ? "What was planned" : "The session"}
                   </p>
                   <SessionPhases instructions={openSession.instructions} />
@@ -656,42 +652,40 @@ export default function PlanPage() {
               )}
 
               {openSession.isAnchor && (
-                <p className="text-indigo-700 text-sm mt-4">
+                <p className="text-indigo-700 text-sm mt-5 max-w-[54ch] leading-relaxed">
                   ★ Key session. The coach protects this one: it will ease or move
                   anything else in the week before touching it.
                 </p>
               )}
 
               {openSession.load && (
-                <div className="mt-4 border border-gray-200 rounded p-3">
-                  <p className="font-semibold text-gray-800 mb-1">
-                    What it costs you
-                  </p>
+                <div className="well mt-5">
+                  <p className="eyebrow mb-3">What it costs you</p>
                   <table className="w-full text-sm">
                     <tbody>
                       <tr>
-                        <td className="text-gray-600 py-0.5">Aerobic</td>
-                        <td className="text-gray-800 text-right">
+                        <td className="text-gray-600 py-1 text-sm">Aerobic</td>
+                        <td className="text-right font-mono text-sm text-gray-900 tabular-nums">
                           {Math.round(openSession.load.metabolic)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="text-gray-600 py-0.5">
+                        <td className="text-gray-600 py-1 text-sm">
                           Impact <span className="text-gray-400">(legs, slow to clear)</span>
                         </td>
-                        <td className="text-gray-800 text-right">
+                        <td className="text-right font-mono text-sm text-gray-900 tabular-nums">
                           {Math.round(openSession.load.mechanical)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="text-gray-600 py-0.5">High intensity</td>
-                        <td className="text-gray-800 text-right">
+                        <td className="text-gray-600 py-1 text-sm">High intensity</td>
+                        <td className="text-right font-mono text-sm text-gray-900 tabular-nums">
                           {Math.round(openSession.load.neuromuscular)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="text-gray-600 py-0.5">Upper body</td>
-                        <td className="text-gray-800 text-right">
+                        <td className="text-gray-600 py-1 text-sm">Upper body</td>
+                        <td className="text-right font-mono text-sm text-gray-900 tabular-nums">
                           {Math.round(openSession.load.upper)}
                         </td>
                       </tr>
@@ -702,7 +696,7 @@ export default function PlanPage() {
 
               {openSession.pace && (
                 <div className="mt-4">
-                  <p className="font-semibold text-gray-800 mb-1">Pace / effort</p>
+                  <p className="eyebrow mb-2">Pace / effort</p>
                   <p className="text-gray-700">{openSession.pace}</p>
                 </div>
               )}

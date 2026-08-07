@@ -79,7 +79,7 @@ export default function SyncStravaButton({
 
   return (
     <div className="flex items-center gap-2">
-      {message && <span className="text-xs text-gray-500">{message}</span>}
+      {message && <span className="meta">{message}</span>}
       <button
         type="button"
         onClick={sync}

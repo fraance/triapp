@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { Thinking } from "@/components/ui";
 
 /**
  * Judgement calls the engine puts to the athlete.
@@ -75,47 +76,54 @@ export default function CoachDecisions({ onChanged }: { onChanged?: () => void }
   if (decisions.length === 0 && !message) return null;
 
   return (
-    <div className="mb-8">
+    <div className="mb-8 space-y-3">
       {message && (
-        <div className="alert alert-info mb-3">
+        <div className="alert alert-info">
           <p>{message}</p>
         </div>
       )}
 
       {decisions.map((d) => (
-        <div
-          key={d.id}
-          className="card card-pad mb-3 border-l-4 border-indigo-500"
-        >
-          <h2 className="text-lg font-bold text-indigo-900">{d.question}</h2>
-          <p className="text-gray-700 mt-2">{d.context}</p>
+        <div key={d.id} className="card card-pad">
+          <p className="eyebrow mb-3">
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 rounded-full bg-indigo-500"
+            />
+            Your call
+          </p>
+          <h2 className="section-title">{d.question}</h2>
+          {/* The context is the coach explaining itself — serif. */}
+          <p className="agent-voice-sm mt-3 max-w-[58ch]">{d.context}</p>
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-6 space-y-2.5">
             {d.options.map((o) => (
               <button
                 key={o.id}
                 onClick={() => answer(d.kind, o.id)}
                 disabled={busy === d.kind}
-                className="block w-full text-left border border-gray-300 rounded-lg px-4 py-3 disabled:opacity-50 hover:border-indigo-400"
+                className="group block w-full text-left rounded-2xl bg-gray-50 px-5 py-4
+                  transition-colors disabled:opacity-50 hover:bg-indigo-50"
               >
-                <span className="font-semibold text-gray-800">
-                  {o.label}
+                <span className="flex items-center gap-2.5 flex-wrap">
+                  <span className="font-semibold text-gray-900 tracking-[-0.01em]">
+                    {o.label}
+                  </span>
                   {o.recommended && (
-                    <span className="text-indigo-700 font-normal">
-                      {" "}
-                      · recommended
-                    </span>
+                    <span className="badge badge-brand">Recommended</span>
                   )}
                 </span>
-                <span className="block text-gray-600 text-sm mt-1">{o.detail}</span>
+                <span className="block text-gray-600 text-sm mt-1.5 leading-relaxed">
+                  {o.detail}
+                </span>
               </button>
             ))}
           </div>
 
           {busy === d.kind && (
-            <p className="text-gray-500 text-sm mt-3">
-              Applying that and rebuilding your plan — this takes a minute…
-            </p>
+            <div className="mt-5">
+              <Thinking label="Applying that and rebuilding your plan · ~1 min" />
+            </div>
           )}
         </div>
       ))}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { Thinking } from "@/components/ui";
 
 /**
  * Tell the coach what's going on, in your own words.
@@ -10,7 +11,9 @@ import { useAuth } from "@/lib/auth-context";
  * and no more than four sub-items per tab, and this is a "what do I do today"
  * question anyway.
  *
- * Deliberately plain. What matters is that the reply states the reasoning and
+ * The coach's replies are the only serif text in the product. That is the
+ * whole typographic contract: sans-serif is the application talking, serif is
+ * the coach talking. What matters is that the reply states the reasoning and
  * the plan visibly changes.
  */
 
@@ -26,6 +29,15 @@ const EXAMPLES = [
   "I won't have my bike for the next 4 days",
   "At the beach this weekend, open water swimming only",
 ];
+
+/** Timestamps are metadata, so they render in the mono register. */
+function stamp(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d
+    .toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    .toUpperCase();
+}
 
 export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
   const { user } = useAuth();
@@ -97,50 +109,74 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
 
   return (
     <div className="card card-pad">
-      <h2 className="text-xl font-bold text-indigo-900 mb-1">Tell your coach</h2>
-      <p className="text-gray-600 text-sm mb-3">
+      <p className="eyebrow mb-3">Coach · Conversational</p>
+      <h2 className="section-title">Tell your coach</h2>
+      <p className="section-subtitle mt-2 max-w-[46ch]">
         How you&apos;re feeling, what you won&apos;t have access to, or ask it to
         move or swap a session. The plan adjusts itself.
       </p>
 
       {messages.length > 0 && (
-        <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
+        <div className="mt-7 space-y-7 max-h-[26rem] overflow-y-auto pr-1">
           {messages.map((m) => (
             <div key={m.id}>
-              <p className="text-gray-800 bg-indigo-50 rounded px-3 py-2">
-                {m.rawText}
-              </p>
-              {m.reply ? (
-                <p className="text-gray-700 px-3 py-2">{m.reply}</p>
-              ) : (
-                <p className="text-gray-400 px-3 py-2 text-sm">
-                  Working out what that means for your week…
+              {/* The athlete: their own words, in the app's own voice. */}
+              <div className="flex justify-end">
+                <p className="max-w-[85%] rounded-3xl rounded-br-lg bg-gray-50 px-4 py-2.5 text-[15px] leading-relaxed text-gray-800">
+                  {m.rawText}
                 </p>
-              )}
+              </div>
+
+              {/* The coach: serif, unboxed, given room. */}
+              <div className="mt-4 pl-1">
+                <p className="eyebrow mb-2">
+                  <span
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 rounded-full bg-indigo-500"
+                  />
+                  Coach
+                  {m.reply && stamp(m.createdAt) && (
+                    <span className="opacity-55">{stamp(m.createdAt)}</span>
+                  )}
+                </p>
+                {m.reply ? (
+                  <p className="agent-voice max-w-[62ch] whitespace-pre-line">
+                    {m.reply}
+                  </p>
+                ) : (
+                  <Thinking label="Working out what that means for your week" />
+                )}
+              </div>
             </div>
           ))}
           <div ref={endRef} />
         </div>
       )}
 
+      {/* Guided next steps: never make the athlete start from a blank box. */}
       {messages.length === 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {EXAMPLES.map((e) => (
-            <button
-              key={e}
-              onClick={() => send(e)}
-              disabled={busy}
-              className="text-sm text-indigo-700 border border-indigo-200 rounded-full px-3 py-1 disabled:opacity-50"
-            >
-              {e}
-            </button>
-          ))}
+        <div className="mt-6">
+          <p className="eyebrow mb-3">Try</p>
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLES.map((e) => (
+              <button
+                key={e}
+                onClick={() => send(e)}
+                disabled={busy}
+                className="pill"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {error && <p className="text-red-700 text-sm mb-2">{error}</p>}
+      {error && (
+        <div className="alert alert-danger mt-5">{error}</div>
+      )}
 
-      <div className="flex gap-2">
+      <div className="mt-6 flex items-end gap-2.5">
         <textarea
           className="textarea flex-1 resize-none"
           rows={2}
@@ -158,7 +194,7 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
         <button
           onClick={() => send(text)}
           disabled={busy || !text.trim()}
-          className="btn btn-primary self-end"
+          className="btn btn-primary"
         >
           {busy ? "Thinking…" : "Send"}
         </button>

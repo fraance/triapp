@@ -106,7 +106,8 @@ function StravaPageInner() {
   return (
     <div className="page-shell">
       <div className="page-inner">
-        <header className="mb-6">
+        <header className="mb-8 sm:mb-10">
+          <p className="eyebrow mb-3">Settings · Integration</p>
           <h1 className="page-title">Strava</h1>
         </header>
 
@@ -117,7 +118,7 @@ function StravaPageInner() {
         {/* Not configured */}
         {status && !status.configured && (
           <div className="card card-pad mb-6">
-            <h2 className="text-xl font-bold text-indigo-900 mb-2">
+            <h2 className="section-title mb-2">
               Strava not configured yet
             </h2>
             <p className="text-gray-700">
@@ -189,25 +190,25 @@ function StravaPageInner() {
         {/* History summary */}
         {h?.hasData && (
           <div className="card card-pad mb-6">
-            <h2 className="text-xl font-bold text-indigo-900 mb-4">
+            <h2 className="section-title mb-4">
               Your training (last {h.weeksAnalysed} weeks)
             </h2>
             <div className="flex flex-wrap gap-8 mb-4">
               <div>
-                <p className="text-sm text-gray-500">Avg per week</p>
-                <p className="text-2xl font-bold text-indigo-900">
+                <p className="meta">Avg per week</p>
+                <p className="numeral">
                   {h.avgWeeklyHours} h
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Avg weekly load</p>
-                <p className="text-2xl font-bold text-indigo-900">
+                <p className="meta">Avg weekly load</p>
+                <p className="numeral">
                   {h.avgWeeklyTss} TSS
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Activities</p>
-                <p className="text-2xl font-bold text-indigo-900">
+                <p className="meta">Activities</p>
+                <p className="numeral">
                   {h.totalActivities}
                 </p>
               </div>
@@ -227,23 +228,23 @@ function StravaPageInner() {
 
         {/* Activity list */}
         {activities.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold text-indigo-900 mb-4">
+          <div className="card card-pad">
+            <h2 className="section-title mb-4">
               Recent activities
             </h2>
             <div className="space-y-3">
               {activities.map((a) => (
                 <div
                   key={a.id}
-                  className="border border-gray-200 rounded p-3 flex justify-between gap-4"
+                  className="well flex justify-between gap-4 py-4"
                 >
                   <div>
-                    <p className="font-semibold text-gray-800">{a.name}</p>
-                    <p className="text-sm text-gray-500">
+                    <p className="font-semibold text-gray-900 tracking-[-0.01em]">{a.name}</p>
+                    <p className="meta mt-1">
                       {new Date(a.date).toLocaleDateString()} · {a.discipline}
                     </p>
                   </div>
-                  <div className="text-right text-sm text-gray-600 whitespace-nowrap">
+                  <div className="text-right whitespace-nowrap font-mono text-[11px] tracking-[0.06em] text-gray-500 tabular-nums">
                     <p>
                       {a.minutes} min · {a.distanceKm} km
                     </p>

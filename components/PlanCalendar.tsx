@@ -97,23 +97,24 @@ function isLocked(status: string): boolean {
   return !isUpcoming(status);
 }
 
-/** How a settled session should read to the athlete. */
+/** How a settled session should read to the athlete. Returns a badge tint —
+ *  outcomes are status, and status is always a soft-tinted pill. */
 function outcomeStyle(status: string): { label: string; className: string } {
   switch (status) {
     case "completed":
-      return { label: "done", className: "text-green-700" };
+      return { label: "done", className: "badge-success" };
     // Whether it was on the plan or not makes no difference to the athlete —
     // it happened, so it reads the same as anything else they completed.
     case "unplanned":
-      return { label: "done", className: "text-green-700" };
+      return { label: "done", className: "badge-success" };
     case "substituted":
-      return { label: "trained something else", className: "text-amber-700" };
+      return { label: "trained something else", className: "badge-warn" };
     case "missed":
-      return { label: "missed", className: "text-red-600" };
+      return { label: "missed", className: "badge-danger" };
     case "skipped":
-      return { label: "skipped", className: "text-gray-500" };
+      return { label: "skipped", className: "badge-muted" };
     default:
-      return { label: status, className: "text-gray-500" };
+      return { label: status, className: "badge-muted" };
   }
 }
 
@@ -270,13 +271,13 @@ export default function PlanCalendar({
         return (
           <section
             key={w.week}
-            className={`card ${
-              w.isCurrentWeek ? "ring-2 ring-indigo-500" : ""
+            className={`card overflow-hidden ${
+              w.isCurrentWeek ? "ring-2 ring-gray-900" : ""
             }`}
           >
             {/* ---- Week header ---- */}
-            <header className="p-4 border-b border-gray-100">
-              <div className="flex items-center gap-2">
+            <header className="px-5 pt-5 pb-4">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={() =>
@@ -287,32 +288,35 @@ export default function PlanCalendar({
                     })
                   }
                   aria-expanded={openWeeks.has(w.week)}
-                  className="flex items-center gap-2 text-left flex-1"
+                  className="flex items-center gap-2.5 text-left flex-1 flex-wrap"
                 >
                   <span className="text-gray-400 text-xs">
                     {openWeeks.has(w.week) ? "▾" : "▸"}
                   </span>
-                  <span className="font-bold text-indigo-900">Week {w.week}</span>
+                  <span
+                    className="font-extrabold text-gray-900 tracking-[-0.02em]"
+                    style={{ fontStretch: "112%" }}
+                  >
+                    Week {w.week}
+                  </span>
                   {openWeeks.has(w.week) && (
                     <>
                       <span
-                        className={`px-2 py-0.5 rounded text-sm font-semibold ${
+                        className={`badge ${
                           phaseColour[w.phase] || "bg-gray-100 text-gray-700"
                         }`}
                       >
                         {w.phase}
                       </span>
                       {w.isCurrentWeek && (
-                        <span className="px-2 py-0.5 rounded text-sm bg-indigo-600 text-white">
-                          This week
-                        </span>
+                        <span className="badge badge-ink">This week</span>
                       )}
                       {w.isRaceWeek && (
-                        <span className="text-sm">🏁 Race week</span>
+                        <span className="badge badge-brand">🏁 Race week</span>
                       )}
                     </>
                   )}
-                  <span className="text-sm text-gray-500">
+                  <span className="meta ml-auto">
                     {prettyDay(w.startDate)} – {prettyDay(days[6])}
                   </span>
                 </button>
@@ -328,12 +332,12 @@ export default function PlanCalendar({
               </div>
 
               {openWeeks.has(w.week) && (
-                <div className="mt-3 text-sm text-gray-600">
+                <div className="mt-4">
                   {w.targetTss ? (
                     <div>
-                      <div className="relative h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="relative h-1.5 rounded-full bg-gray-100 overflow-hidden">
                         <span
-                          className="absolute inset-y-0 left-0 rounded-full bg-indigo-500"
+                          className="absolute inset-y-0 left-0 rounded-full bg-indigo-500 transition-[width] duration-500"
                           style={{
                             width: `${Math.min(
                               100,
@@ -342,30 +346,30 @@ export default function PlanCalendar({
                           }}
                         />
                       </div>
-                      <div className="flex justify-between mt-1.5">
-                        <span>
+                      <div className="flex justify-between mt-2.5">
+                        <span className="meta">
                           <strong className="text-green-700">{done}</strong>{" "}
                           completed
                         </span>
-                        <span>
-                          <strong className="text-indigo-900">{remaining}</strong>{" "}
+                        <span className="meta">
+                          <strong className="text-gray-900">{remaining}</strong>{" "}
                           remaining
                         </span>
                       </div>
                     </div>
                   ) : (
                     <div className="flex justify-between">
-                      <span>
+                      <span className="meta">
                         <strong className="text-green-700">{done}</strong>{" "}
                         completed
                       </span>
-                      <span>
-                        <strong className="text-indigo-900">{planned}</strong> TSS
+                      <span className="meta">
+                        <strong className="text-gray-900">{planned}</strong> TSS
                       </span>
                     </div>
                   )}
                   {w.targetHours ? (
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="meta mt-2 opacity-70">
                       {w.targetHours} h target
                     </p>
                   ) : null}
@@ -376,7 +380,7 @@ export default function PlanCalendar({
             {/* ---- Day rows ---- */}
             {openWeeks.has(w.week) &&
               (w.hasDetail ? (
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-gray-100">
                 {days.map((date, i) => {
                   const items = byDate.get(date) ?? [];
                   const frozen = date <= frozenUntil;
@@ -387,32 +391,30 @@ export default function PlanCalendar({
                     <div
                       key={date}
                       data-drop-date={date}
-                      className={`flex gap-3 px-4 py-2 min-h-[3.5rem] transition-colors ${
+                      className={`flex gap-3 px-5 py-2.5 min-h-[3.75rem] transition-colors ${
                         isTarget
                           ? "bg-indigo-50 ring-2 ring-inset ring-indigo-400"
                           : frozen
-                            ? "bg-gray-50"
+                            ? "bg-gray-50/70"
                             : ""
                       }`}
                     >
-                      <div className="w-16 shrink-0 pt-1">
+                      <div className="w-14 shrink-0 pt-2">
                         <p
-                          className={`text-sm font-semibold ${
-                            frozen ? "text-gray-400" : "text-gray-700"
+                          className={`meta ${
+                            frozen ? "opacity-50" : "meta-strong"
                           }`}
                         >
                           {DAY_LABELS[i]}
                         </p>
-                        <p className="text-xs text-gray-400">
-                          {date.slice(8)}
-                        </p>
+                        <p className="meta opacity-60">{date.slice(8)}</p>
                       </div>
 
                       <div className="flex-1 flex flex-wrap gap-2 items-start">
                         {items.length === 0 ? (
                           <p
-                            className={`text-sm pt-1 ${
-                              isTarget ? "text-indigo-700" : "text-gray-400"
+                            className={`text-sm pt-2 ${
+                              isTarget ? "text-indigo-700 font-medium" : "text-gray-400"
                             }`}
                           >
                             {isTarget ? "Drop here" : "Rest day"}
@@ -432,13 +434,13 @@ export default function PlanCalendar({
                                   // fires on a genuine tap.
                                   if (!draggingId) onOpen?.(s);
                                 }}
-                                className={`rounded-lg border px-3 py-2 select-none ${
+                                className={`rounded-2xl px-3.5 py-2.5 select-none transition-shadow ${
                                   draggingId === s.id
-                                    ? "opacity-30 border-indigo-300"
+                                    ? "opacity-30 bg-white shadow-none"
                                     : locked
-                                      ? "border-gray-200 bg-gray-50 cursor-not-allowed"
-                                      : "border-gray-200 bg-white cursor-grab active:cursor-grabbing"
-                                } ${flagged && !locked ? "border-amber-400 bg-amber-50" : ""}`}
+                                      ? "bg-gray-50 cursor-not-allowed"
+                                      : "bg-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing"
+                                } ${flagged && !locked ? "bg-amber-50 ring-1 ring-amber-300" : ""}`}
                                 style={{ touchAction: locked ? "auto" : "none" }}
                                 title={
                                   locked
@@ -446,7 +448,7 @@ export default function PlanCalendar({
                                     : "Press and hold to move · tap for detail"
                                 }
                               >
-                                <p className="font-semibold text-sm text-gray-800">
+                                <p className="font-semibold text-sm text-gray-900 tracking-[-0.01em]">
                                   {s.discipline}
                                   {s.isAnchor && (
                                     <span className="text-indigo-600">
@@ -455,27 +457,27 @@ export default function PlanCalendar({
                                     </span>
                                   )}
                                 </p>
-                                <p className="text-xs text-indigo-600">
+                                <p className="text-[13px] text-gray-600">
                                   {s.type}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p className="meta mt-1">
                                   {s.duration} · {displayTss(s)} TSS
                                   {didTrain(s.status) &&
                                     s.actualTss !== null &&
                                     s.tss > 0 &&
                                     s.actualTss !== s.tss && (
-                                      <span className="text-gray-400">
+                                      <span className="opacity-60">
                                         {" "}
                                         (planned {s.tss})
                                       </span>
                                     )}
                                 </p>
                                 {isSettled(s.status) && (
-                                  <p
-                                    className={`text-xs font-medium ${outcomeStyle(s.status).className}`}
+                                  <span
+                                    className={`badge mt-1.5 ${outcomeStyle(s.status).className}`}
                                   >
                                     {outcomeStyle(s.status).label}
-                                  </p>
+                                  </span>
                                 )}
                               </div>
                             );
@@ -487,8 +489,8 @@ export default function PlanCalendar({
                 })}
               </div>
             ) : (
-              <div className="p-4">
-                <p className="text-gray-500 text-sm mb-3">
+              <div className="px-5 pb-5">
+                <p className="text-gray-600 text-sm mb-4 max-w-[52ch] leading-relaxed">
                   This week is planned at a high level only. Generate the
                   day-by-day sessions whenever you want them.
                 </p>
@@ -510,13 +512,13 @@ export default function PlanCalendar({
       {/* The card follows the finger, since the finger hides the original. */}
       {dragged && ghost && (
         <div
-          className="fixed z-50 pointer-events-none rounded-lg border-2 border-indigo-500 bg-white shadow-xl px-3 py-2 -translate-x-1/2 -translate-y-1/2"
+          className="fixed z-50 pointer-events-none rounded-2xl bg-white shadow-xl ring-2 ring-indigo-500 px-3.5 py-2.5 -translate-x-1/2 -translate-y-1/2 rotate-[-2deg]"
           style={{ left: ghost.x, top: ghost.y }}
         >
-          <p className="font-semibold text-sm text-gray-800">
+          <p className="font-semibold text-sm text-gray-900">
             {dragged.discipline}
           </p>
-          <p className="text-xs text-indigo-600">{dragged.type}</p>
+          <p className="text-[13px] text-gray-600">{dragged.type}</p>
         </div>
       )}
     </div>

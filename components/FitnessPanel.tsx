@@ -58,10 +58,18 @@ function formatValue(t: Threshold): string {
   return `${t.value} ${t.unit}`;
 }
 
-function confidenceColour(c: number): string {
-  if (c >= 0.7) return "text-green-700";
-  if (c >= 0.4) return "text-amber-700";
-  return "text-red-700";
+/** How much the engine trusts a number, as a soft status tint. */
+function confidenceBadge(c: number): string {
+  if (c >= 0.7) return "badge-success";
+  if (c >= 0.4) return "badge-warn";
+  return "badge-danger";
+}
+
+/** The fill colour of the confidence meter. Muted — it informs, it doesn't alarm. */
+function confidenceBar(c: number): string {
+  if (c >= 0.7) return "bg-green-500";
+  if (c >= 0.4) return "bg-amber-400";
+  return "bg-red-500";
 }
 
 export default function FitnessPanel() {
@@ -148,32 +156,29 @@ export default function FitnessPanel() {
 
   return (
     <div>
-      <div>
-        <h2 className="text-2xl font-bold text-indigo-900 mb-2">Fitness</h2>
-        <p className="text-gray-600 mb-6">
-          What the coach believes about your body, and how much it trusts each
-          number.
-        </p>
+      <p className="eyebrow mb-3">Physiology · Derived</p>
+      <h2 className="page-title">Fitness</h2>
+      <p className="page-subtitle mb-9">
+        What the coach believes about your body, and how much it trusts each
+        number.
+      </p>
 
-        {message && (
-          <div className="bg-white border border-indigo-300 rounded p-3 mb-6">
-            <p className="text-gray-800">{message}</p>
-          </div>
-        )}
+      {message && <div className="alert alert-info mb-7">{message}</div>}
 
-        {/* ---- Tests the engine is asking for ---- */}
-        {tests.length > 0 && (
-          <div className="mb-8">
-            <h3 className="text-lg font-bold text-indigo-900 mb-3">
-              Tests scheduled
-            </h3>
+      {/* ---- Tests the engine is asking for ---- */}
+      {tests.length > 0 && (
+        <div className="mb-10">
+          <h3 className="section-title mb-4">Tests scheduled</h3>
+          <div className="space-y-3">
             {tests.map((t: ScheduledTest) => (
-              <div key={t.id} className="bg-white rounded-lg shadow p-4 mb-3">
-                <p className="font-semibold text-gray-800">
+              <div key={t.id} className="card card-pad">
+                <p className="meta meta-strong">
                   {t.date} · {t.discipline} · {t.duration}
                 </p>
                 {t.instructions && (
-                  <p className="text-gray-700 text-sm mt-2">{t.instructions}</p>
+                  <p className="text-gray-700 text-[15px] leading-relaxed mt-2.5">
+                    {t.instructions}
+                  </p>
                 )}
                 {t.manualProtocol && t.testKind && (
                   <ManualEntry
@@ -189,122 +194,137 @@ export default function FitnessPanel() {
               </div>
             ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ---- Threshold confidence ---- */}
-        <h3 className="text-lg font-bold text-indigo-900 mb-3">
-          Your numbers
-        </h3>
-        <div className="space-y-3 mb-8">
-          {thresholds.map((t: Threshold) => (
-            <div key={t.kind} className="bg-white rounded-lg shadow p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-semibold text-gray-800">{t.label}</p>
-                  <p className="text-gray-700">{formatValue(t)}</p>
-                </div>
-                <div className="text-right">
-                  <p className={`font-semibold ${confidenceColour(t.confidence)}`}>
-                    {Math.round(t.confidence * 100)}% confident
-                  </p>
-                  {t.source && (
-                    <p className="text-gray-400 text-xs">from {t.source}</p>
-                  )}
-                </div>
+      {/* ---- Threshold confidence ----
+          Every number carries its confidence, its source and its basis. The
+          engine showing its working is what makes it checkable. */}
+      <h3 className="section-title mb-4">Your numbers</h3>
+      <div className="space-y-3 mb-10">
+        {thresholds.map((t: Threshold) => (
+          <div key={t.kind} className="card card-pad">
+            <div className="flex justify-between items-start gap-4">
+              <div className="min-w-0">
+                <p className="meta">{t.label}</p>
+                <p className="numeral mt-1.5">{formatValue(t)}</p>
               </div>
-              <p className="text-gray-500 text-sm mt-1">{t.basis}</p>
-
-              {t.useRpe && t.value != null && (
-                <p className="text-amber-700 text-sm mt-2">
-                  Too old to prescribe from — sessions are being set by feel
-                  instead.
-                </p>
-              )}
-
-              {(t.needsTest || t.value == null) && t.manualProtocol && (
-                <details className="mt-3">
-                  <summary className="text-indigo-700 cursor-pointer text-sm">
-                    Measure it yourself
-                  </summary>
-                  <ManualEntry
-                    kind={t.kind}
-                    protocol={t.manualProtocol}
-                    entry={entry}
-                    setEntry={setEntry}
-                    busy={busy === t.kind}
-                    onSubmit={() => submitManual(t.kind)}
-                    onSkip={() => skip(t.kind)}
-                  />
-                </details>
-              )}
+              <div className="text-right shrink-0">
+                <span className={`badge ${confidenceBadge(t.confidence)}`}>
+                  {Math.round(t.confidence * 100)}% confident
+                </span>
+                {t.source && (
+                  <p className="meta mt-2">from {t.source}</p>
+                )}
+              </div>
             </div>
-          ))}
-        </div>
 
-        {/* ---- Where race time is won ---- */}
-        <h3 className="text-lg font-bold text-indigo-900 mb-3">
-          Where your race time is
-        </h3>
-        <div className="bg-white rounded-lg shadow p-4 mb-8">
-          {limiters.hasData ? (
-            <>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500">
-                    <th className="pb-2">Discipline</th>
-                    <th className="pb-2">Predicted</th>
-                    <th className="pb-2">5% gain saves</th>
+            {/* Confidence meter: the trust level, made visible. */}
+            <div
+              className="mt-4 h-1 rounded-full bg-gray-100 overflow-hidden"
+              role="presentation"
+            >
+              <span
+                className={`block h-full rounded-full ${confidenceBar(t.confidence)}`}
+                style={{ width: `${Math.round(t.confidence * 100)}%` }}
+              />
+            </div>
+
+            <p className="hint">{t.basis}</p>
+
+            {t.useRpe && t.value != null && (
+              <div className="alert alert-warn mt-4">
+                Too old to prescribe from — sessions are being set by feel
+                instead.
+              </div>
+            )}
+
+            {(t.needsTest || t.value == null) && t.manualProtocol && (
+              <details className="mt-4">
+                <summary className="text-indigo-700 cursor-pointer text-sm font-semibold">
+                  Measure it yourself
+                </summary>
+                <ManualEntry
+                  kind={t.kind}
+                  protocol={t.manualProtocol}
+                  entry={entry}
+                  setEntry={setEntry}
+                  busy={busy === t.kind}
+                  onSubmit={() => submitManual(t.kind)}
+                  onSkip={() => skip(t.kind)}
+                />
+              </details>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ---- Where race time is won ---- */}
+      <h3 className="section-title mb-4">Where your race time is</h3>
+      <div className="card card-pad mb-10">
+        {limiters.hasData ? (
+          <>
+            <table className="w-full">
+              <thead>
+                <tr className="text-left">
+                  <th className="meta pb-3 font-medium">Discipline</th>
+                  <th className="meta pb-3 font-medium">Predicted</th>
+                  <th className="meta pb-3 font-medium">5% gain saves</th>
+                </tr>
+              </thead>
+              <tbody>
+                {limiters.estimates.map((e: any) => (
+                  <tr key={e.discipline} className="border-t border-gray-100">
+                    <td className="py-3 text-gray-900 font-semibold capitalize">
+                      {e.discipline}
+                      {limiters.ranked[0] === e.discipline && (
+                        <span className="badge badge-brand ml-2">
+                          Biggest lever
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 font-mono text-sm text-gray-700 tabular-nums">
+                      {e.predictedSec
+                        ? `${Math.floor(e.predictedSec / 3600)}h${String(
+                            Math.floor((e.predictedSec % 3600) / 60)
+                          ).padStart(2, "0")}`
+                        : "—"}
+                    </td>
+                    <td className="py-3 font-mono text-sm text-gray-700 tabular-nums">
+                      {e.minutesPer5Pct != null ? `${e.minutesPer5Pct} min` : "—"}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {limiters.estimates.map((e: any) => (
-                    <tr key={e.discipline} className="border-t border-gray-100">
-                      <td className="py-2 text-gray-800 capitalize">
-                        {e.discipline}
-                        {limiters.ranked[0] === e.discipline && (
-                          <span className="text-indigo-700 text-xs"> · biggest lever</span>
-                        )}
-                      </td>
-                      <td className="py-2 text-gray-700">
-                        {e.predictedSec
-                          ? `${Math.floor(e.predictedSec / 3600)}h${String(
-                              Math.floor((e.predictedSec % 3600) / 60)
-                            ).padStart(2, "0")}`
-                          : "—"}
-                      </td>
-                      <td className="py-2 text-gray-700">
-                        {e.minutesPer5Pct != null ? `${e.minutesPer5Pct} min` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {limiters.notes.map((n: string, i: number) => (
-                <p key={i} className="text-gray-500 text-xs mt-2">
-                  {n}
-                </p>
-              ))}
-            </>
-          ) : (
-            <p className="text-gray-600">
-              {limiters.notes[0] ?? "Not enough measured data yet."}
-            </p>
-          )}
-        </div>
+                ))}
+              </tbody>
+            </table>
+            {limiters.notes.map((n: string, i: number) => (
+              <p key={i} className="hint">
+                {n}
+              </p>
+            ))}
+          </>
+        ) : (
+          <p className="text-gray-600">
+            {limiters.notes[0] ?? "Not enough measured data yet."}
+          </p>
+        )}
+      </div>
 
-        {/* ---- Fuelling ---- */}
-        <h3 className="text-lg font-bold text-indigo-900 mb-3">Fuelling</h3>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-gray-800">
-            Estimated glycogen: {Math.round(metabolic.glycogen * 100)}% ·{" "}
+      {/* ---- Fuelling ---- */}
+      <h3 className="section-title mb-4">Fuelling</h3>
+      <div className="card card-pad">
+        <p className="meta">Estimated glycogen</p>
+        <p className="numeral mt-1.5">
+          {Math.round(metabolic.glycogen * 100)}%
+          <span className="ml-2 text-base font-normal text-gray-500">
             {metabolic.band}
-          </p>
-          <p className="text-gray-500 text-sm mt-1">{metabolic.basis}</p>
-          <p className="text-gray-400 text-xs mt-2">
-            An estimate from training load, not a measurement — we hold no
-            nutrition data.
-          </p>
-        </div>
+          </span>
+        </p>
+        <p className="hint">{metabolic.basis}</p>
+        <p className="hint">
+          An estimate from training load, not a measurement — we hold no
+          nutrition data.
+        </p>
       </div>
     </div>
   );
@@ -329,19 +349,32 @@ function ManualEntry({
   onSkip: () => void;
 }) {
   return (
-    <div className="mt-3 border-t border-gray-100 pt-3">
-      <p className="font-semibold text-gray-800">{protocol.name}</p>
-      <p className="text-gray-600 text-sm mt-1">{protocol.why}</p>
-      <ol className="list-decimal list-inside text-gray-700 text-sm mt-2 space-y-1">
+    <div className="well mt-4">
+      <p className="font-semibold text-gray-900 tracking-[-0.01em]">
+        {protocol.name}
+      </p>
+      <p className="text-gray-600 text-sm mt-1.5 leading-relaxed">
+        {protocol.why}
+      </p>
+      <ol className="mt-4 space-y-2">
         {protocol.steps.map((s, i) => (
-          <li key={i}>{s}</li>
+          <li key={i} className="flex gap-3 items-start">
+            <span
+              aria-hidden="true"
+              className="shrink-0 w-5 h-5 mt-0.5 rounded-full bg-white text-gray-500
+                font-mono text-[10px] font-semibold flex items-center justify-center"
+            >
+              {i + 1}
+            </span>
+            <span className="text-gray-700 text-sm leading-relaxed">{s}</span>
+          </li>
         ))}
       </ol>
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-5 space-y-4">
         {protocol.fields.map((f) => (
           <div key={f.key}>
-            <label className="block text-sm text-gray-700">{f.label}</label>
+            <label className="label">{f.label}</label>
             <input
               className="input"
               placeholder={f.hint ?? ""}
@@ -357,19 +390,11 @@ function ManualEntry({
         ))}
       </div>
 
-      <div className="flex gap-2 mt-3">
-        <button
-          onClick={onSubmit}
-          disabled={busy}
-          className="btn btn-primary"
-        >
+      <div className="flex gap-2.5 mt-5">
+        <button onClick={onSubmit} disabled={busy} className="btn btn-primary">
           {busy ? "Saving…" : "Save result"}
         </button>
-        <button
-          onClick={onSkip}
-          disabled={busy}
-          className="btn btn-secondary"
-        >
+        <button onClick={onSkip} disabled={busy} className="btn btn-secondary">
           Skip this test
         </button>
       </div>

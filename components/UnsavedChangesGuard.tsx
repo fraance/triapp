@@ -115,19 +115,16 @@ export default function UnsavedChangesGuard({
   if (!pending) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
-        <h2 className="text-lg font-bold text-indigo-900 mb-2">
-          Save your changes?
-        </h2>
-        <p className="text-gray-600 mb-4">{message}</p>
+    <div className="fixed inset-0 z-50 bg-gray-900/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+      <div className="card w-full max-w-sm p-7 shadow-2xl">
+        <p className="eyebrow mb-3">Unsaved draft</p>
+        <h2 className="section-title mb-2">Save your changes?</h2>
+        <p className="section-subtitle mb-6">{message}</p>
 
         {failed && (
-          <div className="bg-red-50 border border-red-200 rounded p-3 mb-4">
-            <p className="font-semibold text-red-800 mb-1">
-              That didn&apos;t save.
-            </p>
-            <p className="text-red-700 text-sm">
+          <div className="alert alert-danger mb-5">
+            <p className="font-semibold mb-1">That didn&apos;t save.</p>
+            <p>
               {error ||
                 "Something rejected the change. Keep editing to fix it, or discard."}
             </p>

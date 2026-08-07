@@ -204,7 +204,8 @@ export default function AthletePage() {
   return (
     <div className="page-shell">
       <div className="page-inner">
-        <header className="mb-6">
+        <header className="mb-8 sm:mb-10">
+          <p className="eyebrow mb-3">Me · Profile</p>
           <h1 className="page-title">Athlete profile</h1>
           <p className="page-subtitle">
             Everything here makes your plan more accurate. Leave anything blank
@@ -216,12 +217,13 @@ export default function AthletePage() {
           <div className="alert alert-success mb-6">{message}</div>
         )}
 
+        {/* A conflict is never resolved silently: the athlete's value stands
+            until they say otherwise, and both origins are labelled. */}
         {suggestions.length > 0 && (
-          <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 mb-6">
-            <h2 className="text-lg font-bold text-amber-900 mb-1">
-              We found different numbers to yours
-            </h2>
-            <p className="text-sm text-amber-900 mb-4">
+          <div className="rounded-[2rem] bg-amber-50 p-6 sm:p-8 mb-6 shadow-sm">
+            <p className="eyebrow mb-3">Conflict · Needs your call</p>
+            <h2 className="section-title">We found different numbers to yours</h2>
+            <p className="section-subtitle mt-2 mb-6">
               Your value stays unless you choose otherwise. We won&apos;t ask
               again once you&apos;ve decided.
             </p>
@@ -229,15 +231,15 @@ export default function AthletePage() {
               {suggestions.map((sg: any) => (
                 <div
                   key={sg.field}
-                  className="bg-white rounded p-4 flex flex-wrap items-center justify-between gap-3"
+                  className="bg-white rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4"
                 >
-                  <div>
-                    <p className="font-semibold text-gray-800">{sg.label}</p>
-                    <p className="text-sm text-gray-700">
+                  <div className="min-w-0">
+                    <p className="meta">{sg.label}</p>
+                    <p className="text-[15px] text-gray-800 mt-1.5">
                       You entered <strong>{sg.currentDisplay}</strong> · we found{" "}
                       <strong>{sg.suggestedDisplay}</strong>
                     </p>
-                    <p className="text-xs text-gray-500">{sg.origin}</p>
+                    <p className="hint">{sg.origin}</p>
                   </div>
                   <div className="flex gap-2 whitespace-nowrap">
                     <button
@@ -264,12 +266,10 @@ export default function AthletePage() {
         )}
 
         <div className="card card-pad mb-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-indigo-900">
-                Fill this in for me
-              </h2>
-              <p className="text-gray-600 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="section-title">Fill this in for me</h2>
+              <p className="section-subtitle mt-2 max-w-[52ch]">
                 Pulls your weight, FTP, sex, thresholds and personal bests from
                 Strava and your training history. Anything you typed yourself is
                 left untouched.
@@ -286,14 +286,13 @@ export default function AthletePage() {
           </div>
 
           {prefilled.length > 0 && (
-            <div className="mt-4 bg-gray-50 rounded p-3">
-              <p className="font-semibold text-gray-800 mb-1 text-sm">
-                Filled in for you:
-              </p>
-              <ul className="text-sm text-gray-700 list-disc ml-5">
+            <div className="well mt-5">
+              <p className="eyebrow mb-3">Filled in for you</p>
+              <ul className="text-sm text-gray-700 space-y-1.5">
                 {prefilled.map((f: any) => (
                   <li key={f.field}>
-                    <strong>{f.label}:</strong> {f.display}{" "}
+                    <strong className="text-gray-900">{f.label}:</strong>{" "}
+                    {f.display}{" "}
                     <span className="text-gray-500">— {f.origin}</span>
                   </li>
                 ))}
@@ -305,17 +304,23 @@ export default function AthletePage() {
         {/* What we already know */}
         {snapshot && (
           <div className="card card-pad mb-6">
-            <h2 className="text-xl font-bold text-indigo-900 mb-2">
+            <h2 className="section-title mb-3">
               What we&apos;ve worked out from your data
             </h2>
-            <p className="text-gray-600 mb-4">
-              Profile completeness: <strong>{snapshot.readiness}%</strong>
+            <p className="meta">
+              Profile completeness · {snapshot.readiness}%
             </p>
+            <div className="mt-2 mb-5 h-1 rounded-full bg-gray-100 overflow-hidden">
+              <span
+                className="block h-full rounded-full bg-indigo-500"
+                style={{ width: `${snapshot.readiness}%` }}
+              />
+            </div>
 
             {eq && (
-              <div className="mb-4">
-                <p className="font-semibold text-gray-800 mb-1">Equipment detected</p>
-                <ul className="text-sm text-gray-600 list-disc ml-5">
+              <div className="mb-5">
+                <p className="eyebrow mb-2">Equipment detected</p>
+                <ul className="text-sm text-gray-600 list-disc ml-5 space-y-1">
                   {eq.evidence?.map((e: string, i: number) => (
                     <li key={i}>{e}</li>
                   ))}
@@ -324,11 +329,11 @@ export default function AthletePage() {
             )}
 
             {snapshot.recommendedTests?.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded p-4">
-                <p className="font-semibold text-amber-900 mb-2">
+              <div className="alert alert-warn">
+                <p className="font-semibold mb-2">
                   Tests we&apos;ll add to your plan to fill the gaps
                 </p>
-                <ul className="text-sm text-amber-900 space-y-2">
+                <ul className="space-y-2">
                   {snapshot.recommendedTests.map((t: any) => (
                     <li key={t.key}>
                       <strong>{t.name}</strong> — {t.reason}
@@ -342,7 +347,7 @@ export default function AthletePage() {
 
         {/* Body */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">About you</h2>
+          <h2 className="section-title mb-4">About you</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Age">
               <input type="number" className={input} value={p.age ?? ""} onChange={(e) => set("age", numOrNull(e.target.value))} />
@@ -374,7 +379,7 @@ export default function AthletePage() {
 
         {/* Physiology */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Baseline physiology</h2>
+          <h2 className="section-title mb-4">Baseline physiology</h2>
           <div className="grid md:grid-cols-4 gap-4">
             <Field label="Max heart rate" hint={detected(m?.maxHeartRate, (v) => `${v} bpm`) ?? undefined}>
               <input type="number" className={input} value={p.maxHeartRate ?? ""} onChange={(e) => set("maxHeartRate", numOrNull(e.target.value))} />
@@ -393,7 +398,7 @@ export default function AthletePage() {
 
         {/* Preferences */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Preferences</h2>
+          <h2 className="section-title mb-4">Preferences</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <Field label="Favourite discipline">
               <select className={input} value={p.favouriteSport ?? ""} onChange={(e) => set("favouriteSport", e.target.value)}>
@@ -412,7 +417,7 @@ export default function AthletePage() {
 
         {/* Per-discipline difficulty — how much each sport costs the athlete */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">
+          <h2 className="section-title mb-4">
             How hard each sport feels
           </h2>
           <p className="text-sm text-gray-600 mb-4">
@@ -446,13 +451,13 @@ export default function AthletePage() {
 
         {/* Health */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Health &amp; injuries</h2>
+          <h2 className="section-title mb-4">Health &amp; injuries</h2>
           <div className="space-y-4">
             <Field label="Past injuries" hint="e.g. 'Left achilles tendinopathy 2024, recovered'">
-              <textarea rows={2} className={input} value={p.injuryHistory ?? ""} onChange={(e) => set("injuryHistory", e.target.value)} />
+              <textarea rows={2} className="textarea" value={p.injuryHistory ?? ""} onChange={(e) => set("injuryHistory", e.target.value)} />
             </Field>
             <Field label="Anything currently bothering you?" hint="e.g. 'Right knee sore after long runs'">
-              <textarea rows={2} className={input} value={p.ongoingIssues ?? ""} onChange={(e) => set("ongoingIssues", e.target.value)} />
+              <textarea rows={2} className="textarea" value={p.ongoingIssues ?? ""} onChange={(e) => set("ongoingIssues", e.target.value)} />
             </Field>
             <div className="grid md:grid-cols-2 gap-4">
               <Field label="Chronic conditions" hint="e.g. asthma">
@@ -483,7 +488,7 @@ export default function AthletePage() {
 
         {/* Swim */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Swim</h2>
+          <h2 className="section-title mb-4">Swim</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="CSS pace per 100m (mm:ss)" hint={detected(m?.swimCssSecPer100, (v) => `${Math.floor(v/60)}:${String(v%60).padStart(2,"0")}/100m`) ?? "From a 400m + 200m test"}>
               <input className={input} placeholder="1:45" value={fromSeconds(p.swimCssSecPer100)} onChange={(e) => set("swimCssSecPer100", toSeconds(e.target.value))} />
@@ -505,7 +510,7 @@ export default function AthletePage() {
 
         {/* Bike */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Bike</h2>
+          <h2 className="section-title mb-4">Bike</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="FTP (watts)" hint={detected(m?.ftpWatts, (v) => `${v} W`) ?? undefined}>
               <input type="number" className={input} value={p.ftpWatts ?? ""} onChange={(e) => set("ftpWatts", numOrNull(e.target.value))} />
@@ -521,7 +526,7 @@ export default function AthletePage() {
 
         {/* Run */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">Run</h2>
+          <h2 className="section-title mb-4">Run</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <Field label="Threshold pace per km (mm:ss)" hint={detected(m?.runThresholdPaceSec, (v) => `${Math.floor(v/60)}:${String(v%60).padStart(2,"0")}/km`) ?? undefined}>
               <input className={input} placeholder="4:30" value={fromSeconds(p.runThresholdPaceSec)} onChange={(e) => set("runThresholdPaceSec", toSeconds(e.target.value))} />

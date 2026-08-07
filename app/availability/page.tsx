@@ -99,7 +99,8 @@ export default function AvailabilityPage() {
   return (
     <div className="page-shell">
       <div className="page-inner-narrow">
-        <header className="mb-6">
+        <header className="mb-8 sm:mb-10">
+          <p className="eyebrow mb-3">Me · Availability</p>
           <h1 className="page-title">
             Your time for training
           </h1>
@@ -138,7 +139,7 @@ export default function AvailabilityPage() {
         <section className={`card card-pad mb-6 ${
             form.noTimeConstraints ? "opacity-50 pointer-events-none" : ""
           }`}>
-          <h2 className="text-xl font-bold text-indigo-900 mb-1">
+          <h2 className="section-title mb-1">
             Hours available each day
           </h2>
           <p className="text-sm text-gray-600 mb-4">
@@ -148,7 +149,7 @@ export default function AvailabilityPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {DAYS.map(([key, label]) => (
               <div key={key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="label">
                   {label}
                 </label>
                 <input
@@ -165,8 +166,8 @@ export default function AvailabilityPage() {
               </div>
             ))}
             <div className="flex flex-col justify-end">
-              <p className="text-sm text-gray-500">Total</p>
-              <p className="text-2xl font-bold text-indigo-900">
+              <p className="meta">Total</p>
+              <p className="numeral">
                 {Math.round(total * 10) / 10} h
               </p>
             </div>
@@ -174,12 +175,12 @@ export default function AvailabilityPage() {
         </section>
 
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-4">
+          <h2 className="section-title mb-4">
             Practical constraints
           </h2>
           <div className="grid md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="label">
                 Best day for your long session
               </label>
               <select
@@ -194,7 +195,7 @@ export default function AvailabilityPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="label">
                 Anything else we should know?
               </label>
               <input
@@ -225,7 +226,7 @@ export default function AvailabilityPage() {
 
         {/* Capacity — derived, read-only */}
         <section className="card card-pad mb-6">
-          <h2 className="text-xl font-bold text-indigo-900 mb-1">
+          <h2 className="section-title mb-1">
             What your body is ready for
           </h2>
           <p className="text-sm text-gray-600 mb-4">
@@ -235,20 +236,20 @@ export default function AvailabilityPage() {
           {cap?.hasData ? (
             <div className="flex flex-wrap gap-8">
               <div>
-                <p className="text-sm text-gray-500">Recently training</p>
-                <p className="text-2xl font-bold text-indigo-900">
+                <p className="meta">Recently training</p>
+                <p className="numeral">
                   {cap.recentWeeklyHours} h/week
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Biggest recent week</p>
-                <p className="text-2xl font-bold text-indigo-900">
+                <p className="meta">Biggest recent week</p>
+                <p className="numeral">
                   {cap.peakWeeklyHours} h
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Safe to build to next</p>
-                <p className="text-2xl font-bold text-indigo-900">
+                <p className="meta">Safe to build to next</p>
+                <p className="numeral">
                   {cap.safeNextWeekHours} h
                 </p>
               </div>
@@ -259,7 +260,7 @@ export default function AvailabilityPage() {
               one the athlete can neither trust nor argue with — and this one
               decides how hard their plan is. */}
           {cap?.hasData ? (
-            <div className="mt-4 border-t border-gray-100 pt-3">
+            <div className="well mt-6">
               <p className="text-gray-700 text-sm">{cap.basis}</p>
               <p className="text-gray-600 text-sm mt-2">
                 &ldquo;Safe to build to&rdquo; is your recent average, or 80% of
@@ -288,17 +289,17 @@ export default function AvailabilityPage() {
         {/* The resulting decision */}
         {budget && (
           <section
-            className={`rounded-lg p-6 mb-6 border ${
+            className={`rounded-[2rem] p-6 sm:p-8 mb-6 shadow-sm ${
               budget.bindingConstraint === "unknown"
-                ? "bg-amber-50 border-amber-300"
-                : "bg-indigo-50 border-indigo-200"
+                ? "bg-amber-50"
+                : "bg-indigo-50"
             }`}
           >
-            <h2 className="text-lg font-bold text-indigo-900 mb-2">
+            <h2 className="section-title mb-2">
               What your plan will target
             </h2>
             {budget.recommendedWeeklyHours ? (
-              <p className="text-2xl font-bold text-indigo-900 mb-2">
+              <p className="numeral mb-2">
                 {budget.recommendedWeeklyHours} h/week
                 <span className="text-base font-normal text-gray-600">
                   {" "}

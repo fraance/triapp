@@ -50,17 +50,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-10">
+    <div className="min-h-screen flex items-center justify-center px-5 py-12">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <span className="inline-flex w-12 h-12 rounded-2xl bg-indigo-600 items-center justify-center text-white text-2xl font-extrabold mb-4">
-            T
-          </span>
-          <h1 className="text-3xl font-bold text-indigo-900">Welcome back</h1>
-          <p className="text-gray-600 mt-1">Log in to your training plan</p>
+        <div className="mb-9">
+          <Link href="/" aria-label="TriApp home">
+            <span
+              aria-hidden="true"
+              className="inline-flex w-11 h-11 rounded-2xl bg-indigo-600 items-center justify-center text-white text-lg font-extrabold mb-7 shadow-lg shadow-indigo-600/25"
+              style={{ fontStretch: "120%" }}
+            >
+              T
+            </span>
+          </Link>
+          <p className="eyebrow mb-4">Session · Sign in</p>
+          <h1 className="page-title">Welcome back</h1>
+          <p className="page-subtitle">Log in to your training plan.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card card-pad p-8 space-y-4">
+        <form onSubmit={handleSubmit} className="card card-pad space-y-5">
           <div>
             <label className="label" htmlFor="login-email">
               Email
@@ -100,9 +107,12 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-gray-600">
+        <p className="mt-6 text-center text-sm text-gray-600">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-indigo-600 hover:underline font-medium">
+          <Link
+            href="/signup"
+            className="text-indigo-700 font-semibold underline underline-offset-4"
+          >
             Sign up
           </Link>
         </p>

@@ -120,7 +120,8 @@ export default function ProfilePage() {
   return (
     <div className="page-shell">
       <div className="page-inner">
-        <header className="mb-6">
+        <header className="mb-8 sm:mb-10">
+          <p className="eyebrow mb-3">Settings · Account</p>
           <h1 className="page-title">
             Account &amp; plan
           </h1>
@@ -133,7 +134,7 @@ export default function ProfilePage() {
 
         {/* Profile Form */}
         <div className="card card-pad mb-8">
-          <h2 className="text-2xl font-bold text-indigo-900 mb-6">Your Profile</h2>
+          <h2 className="section-title mb-6">Your Profile</h2>
 
           <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
@@ -152,7 +153,7 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="label">
                 Race Type
               </label>
               <select
@@ -172,7 +173,7 @@ export default function ProfilePage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="label">
               Past Performance & Notes
             </label>
             <textarea
@@ -181,7 +182,7 @@ export default function ProfilePage() {
                 setProfile({ ...profile, pastPerformance: e.target.value || undefined })
               }
               rows={4}
-              className="input"
+              className="textarea"
               placeholder="Share your past race results, injuries, or other relevant context..."
             />
           </div>
@@ -210,7 +211,7 @@ export default function ProfilePage() {
 
         {/* Generate Plan Section */}
         <div className="card card-pad mb-8">
-          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+          <h2 className="section-title mb-4">
             Generate Your Training Plan
           </h2>
           <p className="text-gray-600 mb-6">
@@ -220,20 +221,20 @@ export default function ProfilePage() {
           </p>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="label">
               How many weeks of detailed sessions to write now?
             </label>
             <select
               value={detailWeeks}
               onChange={(e) => setDetailWeeks(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg"
+              className="select"
             >
               <option value="4">Next 4 weeks (fastest)</option>
               <option value="8">Next 8 weeks</option>
               <option value="12">Next 12 weeks</option>
               <option value="all">All weeks to race day (slowest)</option>
             </select>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="hint">
               Every week to race day always gets a phase and targets. This only
               controls how far ahead the day-by-day workouts are written. You can
               add more later from the Season page.
@@ -261,7 +262,7 @@ export default function ProfilePage() {
 
         {/* Strava Integration Section */}
         <div className="card card-pad mb-8">
-          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+          <h2 className="section-title mb-4">
             Strava Integration
           </h2>
           <p className="text-gray-600 mb-6">
@@ -278,7 +279,7 @@ export default function ProfilePage() {
 
         {/* Garmin Integration Section */}
         <div className="card card-pad mb-8">
-          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+          <h2 className="section-title mb-4">
             Garmin Integration
           </h2>
           <p className="text-gray-600 mb-6">
@@ -290,7 +291,7 @@ export default function ProfilePage() {
 
         {/* Google Calendar Integration Section */}
         <div className="card card-pad mb-8">
-          <h2 className="text-2xl font-bold text-indigo-900 mb-4">
+          <h2 className="section-title mb-4">
             Google Calendar Integration
           </h2>
           <p className="text-gray-600 mb-6">
