@@ -40,41 +40,62 @@ can restrict them to throwaway accounts. Always clean up test users afterwards.
 
 ## 4. Use the design system — never invent UI
 There is one design system, defined in `app/globals.css`. Read its header comment
-before writing any markup. Build with it; do not hand-roll alternatives and do
-not spend time on bespoke visual polish.
+before writing any markup. The reference points are race kit and instrumentation
+— MAAP, Assos, a power meter head unit. Swiss technical minimalism, not
+lifestyle wellness. Build with it; do not hand-roll alternatives.
 
-**Typography — three faces, three jobs. This is a contract, not a preference:**
-- **Sans (Archivo)** is the application talking: structure, labels, buttons,
-  body copy. `.display` / `.page-title` / `.section-title` for headings.
-- **Serif (Newsreader)** is reserved for the coach's actual voice —
-  `.agent-voice`, `.agent-voice-sm`. If it is serif, the model said it. Nothing
-  else may borrow this face.
-- **Mono (JetBrains Mono)** is for measurements and provenance: TSS, durations,
-  dates, confidence, sources, counts. `.meta` for labels, `.numeral` for
-  figures, `.eyebrow` for the small label above a heading.
+**Typography — two faces, no exceptions:**
+- **Inter** is the whole interface. `.display` / `.page-title` /
+  `.section-title` for headings — all uppercase, tight tracking, heavy weight.
+- **JetBrains Mono** is every number, label, timestamp and status word.
+  `.meta` and `.eyebrow` for micro-labels (`0.65rem`, tracked out, uppercase),
+  `.numeral` / `.numeral-lg` / `.numeral-sm` for figures (tabular, tight).
+- **There is no serif and no italic in this product.** `font-serif` is aliased
+  to the grotesque and `em`/`i` are reset to normal weight-600, so neither can
+  creep back in. A different speaker is signalled with weight, size and measure
+  — see `.agent-voice` for the coach — never with a different face.
+
+**Colour:**
+- Stark white canvas, pure black ink, cool neutral greys. No warmth, no beige.
+- `--signal` (`#FF3B00`, hi-vis orange) is **reserved**. It marks status tags
+  and active metrics only — `.badge-signal`, `.numeral-signal`, meter fills,
+  the active nav rule, focus rings. Primary buttons are black. If the accent
+  gets spent on ordinary actions it stops meaning anything.
+- Colour otherwise comes from the ramps, never a new hex. `indigo-*` is the
+  signal ramp (hi-vis at mid, black at the dark end) and `gray-*` is cool
+  neutral; both are remapped in `@theme`, so plain Tailwind utilities are
+  already on system.
+
+**Geometry:**
+- Radii run 0–6px and never further — the scale is capped in `@theme`, so even
+  `rounded-3xl` lands on 6px. Nothing is a stadium or a pill.
+- Separation is a **1px hairline** (`--hairline`) or a tonal shift. Shadows are
+  reserved for things that genuinely float (modals). A card is a ruled box.
+
+**Density & layout:**
+- Metrics go in `.metric-grid` (+ `MetricGrid` in `components/ui.tsx`) — dense,
+  ruled, column-aligned so figures can be compared down the page. Not a loose
+  vertical stack.
+- Every scrollable view uses `.page-shell`, which already reserves the fixed
+  mobile tab bar plus `env(safe-area-inset-bottom)`. Never let a view clip its
+  own last action.
 
 **Reach for the existing class before writing a new one:**
-- Surfaces — `.card` + `.card-pad`, `.well` for a recessed area, `.divider`.
+- Surfaces — `.card` (+ `.card-pad`, `.card-invert`, `.card-flag`,
+  `.card-signal`), `.well`, `.divider`, `.bar` for chrome.
 - Controls — `.btn` + `.btn-primary/secondary/ghost/success/danger/danger-soft`
-  (+ `.btn-sm` / `.btn-lg`), `.pill` for suggestion chips and filters.
+  (+ `.btn-sm` / `.btn-lg`), `.tag` for suggestion chips and filters.
 - Forms — `.label`, `.input`, `.select`, `.textarea`, `.hint`.
-- Status — `.badge` + tint, `.alert` + tint. Status tints are muted on purpose;
-  only the coral action colour is allowed to shout.
-- Shared components — `PageHeader`, `Stat`, `Loading`, `Thinking`, `MetaRow`,
-  `EmptyState` in `components/ui.tsx`.
+- Status — `.badge` + tint, `.alert` + tint, `.meter` for progress.
+- Shared components — `PageHeader`, `Stat`, `MetricGrid`, `Loading`,
+  `Thinking`, `MetaRow`, `EmptyState` in `components/ui.tsx`.
 
-**Rules:**
-- Colour comes from the ramps, never from a new hex. `indigo-*` is the accent
-  ramp (coral at mid, ink at the dark end) and `gray-*` is warm stone; both are
-  remapped in the `@theme` block, so plain Tailwind utilities are already on
-  system.
-- Geometry is soft: deep radii and pill controls. Define hierarchy with shadow
-  or a tonal shift, never a 1px border.
+**Standing requirements:**
 - Expose the work. A number the coach derived must show its origin and its
   confidence in the mono register — a figure with no working shown is one the
   athlete can neither trust nor argue with.
 - Never leave a bare "no data" line. Use `EmptyState` with one obvious next step.
-- Offer `.pill` suggestions rather than a blank input wherever the athlete is
+- Offer `.tag` suggestions rather than a blank input wherever the athlete is
   being asked to say something.
 - If a genuinely new pattern is needed, add it to `app/globals.css` as a named
   class so the next page inherits it. Do not scatter one-off utility soup.

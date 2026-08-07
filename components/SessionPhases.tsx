@@ -14,19 +14,19 @@ export default function SessionPhases({ instructions }: { instructions: string }
   if (phases.length === 0) return null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       {phases.map((p) => (
         <div key={p.step} className="flex gap-3.5 items-start">
           <span
-            className="shrink-0 w-6 h-6 rounded-full bg-white text-gray-500 shadow-xs
-              font-mono text-[11px] font-semibold flex items-center justify-center mt-0.5"
+            className="shrink-0 w-4 h-4 border border-gray-200 bg-white text-gray-500
+              font-mono text-[0.6rem] font-semibold flex items-center justify-center mt-0.5"
             aria-hidden
           >
             {p.step}
           </span>
           <div className="min-w-0">
             <p className="meta meta-strong">{p.label}</p>
-            <p className="text-gray-700 text-[15px] leading-relaxed mt-1 whitespace-pre-line">
+            <p className="text-sm text-gray-700 leading-relaxed mt-1 whitespace-pre-line">
               {p.body}
             </p>
           </div>

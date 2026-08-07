@@ -119,7 +119,7 @@ export default function RacePage() {
     <div className="page-shell">
       <div className="page-inner-narrow">
         <header className="mb-8 sm:mb-10">
-          <p className="eyebrow mb-3">Me · Target event</p>
+          <p className="eyebrow mb-3">Me / Target event</p>
           <h1 className="page-title">Your race</h1>
           <p className="page-subtitle">
             The course decides the training. Tell us the race and we&apos;ll try
@@ -195,7 +195,7 @@ export default function RacePage() {
         </section>
 
         {questions.length > 0 && (
-          <section className="rounded-[2rem] bg-amber-50 p-6 sm:p-8 mb-6 shadow-sm">
+          <section className="card card-flag card-pad mb-6">
             <h2 className="section-title mb-2">
               We couldn&apos;t work these out — can you help?
             </h2>

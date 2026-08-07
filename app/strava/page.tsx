@@ -107,7 +107,7 @@ function StravaPageInner() {
     <div className="page-shell">
       <div className="page-inner">
         <header className="mb-8 sm:mb-10">
-          <p className="eyebrow mb-3">Settings · Integration</p>
+          <p className="eyebrow mb-3">Settings / Integration</p>
           <h1 className="page-title">Strava</h1>
         </header>
 

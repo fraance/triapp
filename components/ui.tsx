@@ -6,15 +6,15 @@ import type { ReactNode } from "react";
  * Shared UI primitives.
  *
  * These exist so every page renders the same loading state, page heading and
- * metric stat instead of each hand-copying the markup (which drifted the first
- * few times). They carry no styling beyond the design-system classes.
+ * metric instead of each hand-copying the markup (which drifted the first few
+ * times). They carry no styling beyond the design-system classes.
  */
 
 export function Loading({ label = "Loading..." }: { label?: string }) {
   return (
-    <div className="page-shell flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4">
-        <span className="spinner spinner-lg" aria-hidden="true" />
+    <div className="page-shell">
+      <div className="page-inner flex items-center gap-3">
+        <span className="spinner" aria-hidden="true" />
         <p className="meta">{label}</p>
       </div>
     </div>
@@ -24,8 +24,9 @@ export function Loading({ label = "Loading..." }: { label?: string }) {
 /**
  * Page heading.
  *
- * `eyebrow` is the tiny monospaced label above the title — it names the region
- * so the display type is free to be short and loud rather than descriptive.
+ * `eyebrow` is the monospaced micro-label above the title. It names the region
+ * so the display setting stays short and hits hard rather than having to
+ * describe itself.
  */
 export function PageHeader({
   title,
@@ -39,23 +40,46 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="mb-8 sm:mb-10 flex items-end justify-between gap-4 flex-wrap">
-      <div className="min-w-0">
-        {eyebrow && <p className="eyebrow mb-3">{eyebrow}</p>}
-        <h1 className="page-title">{title}</h1>
-        {subtitle && <p className="page-subtitle">{subtitle}</p>}
+    <header className="mb-7 border-b border-gray-200 pb-5">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          {eyebrow && <p className="eyebrow mb-2.5">{eyebrow}</p>}
+          <h1 className="page-title">{title}</h1>
+        </div>
+        {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {subtitle && <p className="page-subtitle">{subtitle}</p>}
     </header>
   );
 }
 
 /**
- * A single measurement.
+ * A ruled grid of readings. Dense and column-aligned rather than a loose
+ * vertical stack — figures should line up down the page so they can be
+ * compared at a glance.
+ */
+export function MetricGrid({
+  cols = 3,
+  children,
+  className = "",
+}: {
+  cols?: 2 | 3 | 4;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`metric-grid metric-grid-${cols} ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * A single measurement: tracked-out micro-label over a large, tight,
+ * tabular figure.
  *
- * Label is monospaced and tracked out; the value is monospaced too, because
- * these are readings off the athlete's data rather than prose. Set
- * `text = true` for values that are words rather than numbers.
+ * `text` is for values that are words rather than numbers. `signal` marks a
+ * live or active metric — one of only two places the accent colour is allowed.
  */
 export function Stat({
   label,
@@ -63,42 +87,40 @@ export function Stat({
   valueClassName = "",
   hint,
   text = false,
+  signal = false,
 }: {
   label: string;
   value: React.ReactNode;
   valueClassName?: string;
   hint?: string;
   text?: boolean;
+  signal?: boolean;
 }) {
   return (
     <div className="min-w-0">
       <p className="meta">{label}</p>
       <p
-        className={`mt-1.5 ${
+        className={`mt-2 ${
           text
-            ? "text-lg font-semibold tracking-tight text-gray-900"
+            ? "text-sm font-semibold uppercase tracking-tight text-gray-950 truncate"
             : "numeral"
-        } ${valueClassName}`}
+        } ${signal ? "numeral-signal" : ""} ${valueClassName}`}
       >
         {value}
       </p>
-      {hint && <p className="hint">{hint}</p>}
+      {hint && <p className="meta mt-1.5">{hint}</p>}
     </div>
   );
 }
 
 /**
- * The agent is working. Shown instead of a frozen panel — exposing the work
- * is what makes the wait feel like computation rather than a hang.
+ * The agent is working. A scanning bar rather than a frozen panel — exposing
+ * the work is what makes the wait read as computation rather than a hang.
  */
 export function Thinking({ label }: { label?: string }) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      <span className="thinking" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
+      <span className="thinking" aria-hidden="true" />
       {label && <span className="meta">{label}</span>}
     </span>
   );
@@ -106,17 +128,17 @@ export function Thinking({ label }: { label?: string }) {
 
 /**
  * Provenance / processing footnote: where a number came from, how long
- * something took, how many sources were read. Tiny, monospaced, unobtrusive —
- * present for trust, not for attention.
+ * something took, how many sources were read. Present for trust, not for
+ * attention.
  */
 export function MetaRow({ items }: { items: (string | null | undefined)[] }) {
   const shown = items.filter(Boolean) as string[];
   if (shown.length === 0) return null;
   return (
-    <p className="meta flex flex-wrap items-center gap-x-2.5 gap-y-1">
+    <p className="meta flex flex-wrap items-center gap-x-2 gap-y-1">
       {shown.map((item, i) => (
-        <span key={`${item}-${i}`} className="flex items-center gap-2.5">
-          {i > 0 && <span aria-hidden="true">·</span>}
+        <span key={`${item}-${i}`} className="flex items-center gap-2">
+          {i > 0 && <span aria-hidden="true" className="text-gray-300">/</span>}
           {item}
         </span>
       ))}
@@ -125,8 +147,7 @@ export function MetaRow({ items }: { items: (string | null | undefined)[] }) {
 }
 
 /**
- * A welcoming blank canvas. An abstract mark plus a single obvious next step —
- * never a bare "no data" line.
+ * A blank state with one obvious next step — never a bare "no data" line.
  */
 export function EmptyState({
   title,
@@ -138,16 +159,14 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="card card-pad py-12 sm:py-16 text-center flex flex-col items-center">
+    <div className="card card-pad py-12 flex flex-col items-start">
       <span
         aria-hidden="true"
-        className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-50"
-      >
-        <span className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 opacity-80" />
-      </span>
+        className="mb-5 block h-[2px] w-10 bg-indigo-500"
+      />
       <h3 className="section-title">{title}</h3>
-      {body && <p className="page-subtitle mx-auto text-center">{body}</p>}
-      {action && <div className="mt-7">{action}</div>}
+      {body && <p className="page-subtitle max-w-[52ch]">{body}</p>}
+      {action && <div className="mt-6">{action}</div>}
     </div>
   );
 }

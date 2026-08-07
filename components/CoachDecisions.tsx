@@ -84,36 +84,29 @@ export default function CoachDecisions({ onChanged }: { onChanged?: () => void }
       )}
 
       {decisions.map((d) => (
-        <div key={d.id} className="card card-pad">
-          <p className="eyebrow mb-3">
-            <span
-              aria-hidden="true"
-              className="h-1.5 w-1.5 rounded-full bg-indigo-500"
-            />
-            Your call
-          </p>
+        <div key={d.id} className="card card-pad border-l-2 border-l-indigo-500">
+          <p className="eyebrow mb-2.5">Your call</p>
           <h2 className="section-title">{d.question}</h2>
-          {/* The context is the coach explaining itself — serif. */}
-          <p className="agent-voice-sm mt-3 max-w-[58ch]">{d.context}</p>
+          <p className="agent-voice-sm mt-2.5">{d.context}</p>
 
-          <div className="mt-6 space-y-2.5">
+          <div className="mt-5 space-y-2">
             {d.options.map((o) => (
               <button
                 key={o.id}
                 onClick={() => answer(d.kind, o.id)}
                 disabled={busy === d.kind}
-                className="group block w-full text-left rounded-2xl bg-gray-50 px-5 py-4
-                  transition-colors disabled:opacity-50 hover:bg-indigo-50"
+                className="block w-full text-left border border-gray-200 px-4 py-3
+                  transition-colors disabled:opacity-40 hover:border-gray-950"
               >
                 <span className="flex items-center gap-2.5 flex-wrap">
-                  <span className="font-semibold text-gray-900 tracking-[-0.01em]">
+                  <span className="text-sm font-semibold tracking-[-0.015em] text-gray-950">
                     {o.label}
                   </span>
                   {o.recommended && (
-                    <span className="badge badge-brand">Recommended</span>
+                    <span className="badge badge-signal">Recommended</span>
                   )}
                 </span>
-                <span className="block text-gray-600 text-sm mt-1.5 leading-relaxed">
+                <span className="block text-sm text-gray-600 mt-1 leading-relaxed">
                   {o.detail}
                 </span>
               </button>
@@ -121,8 +114,8 @@ export default function CoachDecisions({ onChanged }: { onChanged?: () => void }
           </div>
 
           {busy === d.kind && (
-            <div className="mt-5">
-              <Thinking label="Applying that and rebuilding your plan · ~1 min" />
+            <div className="mt-4">
+              <Thinking label="Applying that and rebuilding your plan / ~1 min" />
             </div>
           )}
         </div>

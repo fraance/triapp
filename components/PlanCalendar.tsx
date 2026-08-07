@@ -69,7 +69,7 @@ const phaseColour: Record<string, string> = {
   Peak: "bg-red-100 text-red-800",
   Taper: "bg-purple-100 text-purple-800",
   Race: "bg-green-100 text-green-800",
-  Recovery: "bg-gray-100 text-gray-700",
+  Recovery: "bg-gray-100 text-gray-600",
 };
 
 function addDaysISO(iso: string, n: number): string {
@@ -98,7 +98,7 @@ function isLocked(status: string): boolean {
 }
 
 /** How a settled session should read to the athlete. Returns a badge tint —
- *  outcomes are status, and status is always a soft-tinted pill. */
+ *  outcomes are status, and status is always a tinted badge. */
 function outcomeStyle(status: string): { label: string; className: string } {
   switch (status) {
     case "completed":
@@ -272,11 +272,11 @@ export default function PlanCalendar({
           <section
             key={w.week}
             className={`card overflow-hidden ${
-              w.isCurrentWeek ? "ring-2 ring-gray-900" : ""
+              w.isCurrentWeek ? "border-gray-950" : ""
             }`}
           >
             {/* ---- Week header ---- */}
-            <header className="px-5 pt-5 pb-4">
+            <header className="px-4 pt-4 pb-3.5 sm:px-5">
               <div className="flex items-center gap-2.5">
                 <button
                   type="button"
@@ -293,10 +293,7 @@ export default function PlanCalendar({
                   <span className="text-gray-400 text-xs">
                     {openWeeks.has(w.week) ? "▾" : "▸"}
                   </span>
-                  <span
-                    className="font-extrabold text-gray-900 tracking-[-0.02em]"
-                    style={{ fontStretch: "112%" }}
-                  >
+                  <span className="text-sm font-extrabold uppercase tracking-[-0.03em] text-gray-950">
                     Week {w.week}
                   </span>
                   {openWeeks.has(w.week) && (
@@ -309,7 +306,7 @@ export default function PlanCalendar({
                         {w.phase}
                       </span>
                       {w.isCurrentWeek && (
-                        <span className="badge badge-ink">This week</span>
+                        <span className="badge badge-signal">This week</span>
                       )}
                       {w.isRaceWeek && (
                         <span className="badge badge-brand">🏁 Race week</span>
@@ -335,9 +332,9 @@ export default function PlanCalendar({
                 <div className="mt-4">
                   {w.targetTss ? (
                     <div>
-                      <div className="relative h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="meter">
                         <span
-                          className="absolute inset-y-0 left-0 rounded-full bg-indigo-500 transition-[width] duration-500"
+                          className="transition-[width] duration-300"
                           style={{
                             width: `${Math.min(
                               100,
@@ -369,7 +366,7 @@ export default function PlanCalendar({
                     </div>
                   )}
                   {w.targetHours ? (
-                    <p className="meta mt-2 opacity-70">
+                    <p className="meta mt-2">
                       {w.targetHours} h target
                     </p>
                   ) : null}
@@ -380,7 +377,7 @@ export default function PlanCalendar({
             {/* ---- Day rows ---- */}
             {openWeeks.has(w.week) &&
               (w.hasDetail ? (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-200 border-t border-gray-200">
                 {days.map((date, i) => {
                   const items = byDate.get(date) ?? [];
                   const frozen = date <= frozenUntil;
@@ -391,11 +388,11 @@ export default function PlanCalendar({
                     <div
                       key={date}
                       data-drop-date={date}
-                      className={`flex gap-3 px-5 py-2.5 min-h-[3.75rem] transition-colors ${
+                      className={`flex gap-3 px-4 sm:px-5 py-2 min-h-[3.25rem] transition-colors ${
                         isTarget
-                          ? "bg-indigo-50 ring-2 ring-inset ring-indigo-400"
+                          ? "bg-indigo-50 outline outline-1 -outline-offset-1 outline-indigo-500"
                           : frozen
-                            ? "bg-gray-50/70"
+                            ? "bg-gray-50"
                             : ""
                       }`}
                     >
@@ -407,7 +404,7 @@ export default function PlanCalendar({
                         >
                           {DAY_LABELS[i]}
                         </p>
-                        <p className="meta opacity-60">{date.slice(8)}</p>
+                        <p className="numeral-sm font-mono mt-0.5 text-gray-400">{date.slice(8)}</p>
                       </div>
 
                       <div className="flex-1 flex flex-wrap gap-2 items-start">
@@ -434,13 +431,13 @@ export default function PlanCalendar({
                                   // fires on a genuine tap.
                                   if (!draggingId) onOpen?.(s);
                                 }}
-                                className={`rounded-2xl px-3.5 py-2.5 select-none transition-shadow ${
+                                className={`border px-3 py-2 select-none transition-colors ${
                                   draggingId === s.id
-                                    ? "opacity-30 bg-white shadow-none"
+                                    ? "opacity-30 border-gray-200"
                                     : locked
-                                      ? "bg-gray-50 cursor-not-allowed"
-                                      : "bg-white shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing"
-                                } ${flagged && !locked ? "bg-amber-50 ring-1 ring-amber-300" : ""}`}
+                                      ? "border-gray-200 bg-gray-50 cursor-not-allowed"
+                                      : "border-gray-200 bg-white hover:border-gray-950 cursor-grab active:cursor-grabbing"
+                                } ${flagged && !locked ? "border-amber-400 bg-amber-50" : ""}`}
                                 style={{ touchAction: locked ? "auto" : "none" }}
                                 title={
                                   locked
@@ -448,7 +445,7 @@ export default function PlanCalendar({
                                     : "Press and hold to move · tap for detail"
                                 }
                               >
-                                <p className="font-semibold text-sm text-gray-900 tracking-[-0.01em]">
+                                <p className="text-[13px] font-semibold uppercase tracking-[-0.01em] text-gray-950">
                                   {s.discipline}
                                   {s.isAnchor && (
                                     <span className="text-indigo-600">
@@ -457,7 +454,7 @@ export default function PlanCalendar({
                                     </span>
                                   )}
                                 </p>
-                                <p className="text-[13px] text-gray-600">
+                                <p className="text-[13px] text-gray-600 mt-0.5">
                                   {s.type}
                                 </p>
                                 <p className="meta mt-1">
@@ -489,7 +486,7 @@ export default function PlanCalendar({
                 })}
               </div>
             ) : (
-              <div className="px-5 pb-5">
+              <div className="px-4 pb-4 sm:px-5 sm:pb-5">
                 <p className="text-gray-600 text-sm mb-4 max-w-[52ch] leading-relaxed">
                   This week is planned at a high level only. Generate the
                   day-by-day sessions whenever you want them.
@@ -512,10 +509,10 @@ export default function PlanCalendar({
       {/* The card follows the finger, since the finger hides the original. */}
       {dragged && ghost && (
         <div
-          className="fixed z-50 pointer-events-none rounded-2xl bg-white shadow-xl ring-2 ring-indigo-500 px-3.5 py-2.5 -translate-x-1/2 -translate-y-1/2 rotate-[-2deg]"
+          className="fixed z-50 pointer-events-none bg-white shadow-lg border-2 border-indigo-500 px-3 py-2 -translate-x-1/2 -translate-y-1/2"
           style={{ left: ghost.x, top: ghost.y }}
         >
-          <p className="font-semibold text-sm text-gray-900">
+          <p className="text-[13px] font-semibold uppercase tracking-[-0.01em] text-gray-950">
             {dragged.discipline}
           </p>
           <p className="text-[13px] text-gray-600">{dragged.type}</p>

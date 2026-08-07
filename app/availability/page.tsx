@@ -100,7 +100,7 @@ export default function AvailabilityPage() {
     <div className="page-shell">
       <div className="page-inner-narrow">
         <header className="mb-8 sm:mb-10">
-          <p className="eyebrow mb-3">Me · Availability</p>
+          <p className="eyebrow mb-3">Me / Availability</p>
           <h1 className="page-title">
             Your time for training
           </h1>
@@ -289,10 +289,10 @@ export default function AvailabilityPage() {
         {/* The resulting decision */}
         {budget && (
           <section
-            className={`rounded-[2rem] p-6 sm:p-8 mb-6 shadow-sm ${
+            className={`card card-pad mb-6 ${
               budget.bindingConstraint === "unknown"
-                ? "bg-amber-50"
-                : "bg-indigo-50"
+                ? "card-flag"
+                : "card-signal"
             }`}
           >
             <h2 className="section-title mb-2">

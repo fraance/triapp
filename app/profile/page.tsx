@@ -121,7 +121,7 @@ export default function ProfilePage() {
     <div className="page-shell">
       <div className="page-inner">
         <header className="mb-8 sm:mb-10">
-          <p className="eyebrow mb-3">Settings · Account</p>
+          <p className="eyebrow mb-3">Settings / Account</p>
           <h1 className="page-title">
             Account &amp; plan
           </h1>

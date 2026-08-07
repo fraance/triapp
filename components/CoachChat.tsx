@@ -11,10 +11,11 @@ import { Thinking } from "@/components/ui";
  * and no more than four sub-items per tab, and this is a "what do I do today"
  * question anyway.
  *
- * The coach's replies are the only serif text in the product. That is the
- * whole typographic contract: sans-serif is the application talking, serif is
- * the coach talking. What matters is that the reply states the reasoning and
- * the plan visibly changes.
+ * The two speakers are separated structurally, not typographically — the
+ * athlete's words sit in a ruled box on the right, the coach's run full
+ * measure on the left under a mono attribution. There is no second typeface
+ * in this product to switch into. What matters is that the reply states the
+ * reasoning and the plan visibly changes.
  */
 
 interface Message {
@@ -109,40 +110,34 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
 
   return (
     <div className="card card-pad">
-      <p className="eyebrow mb-3">Coach · Conversational</p>
+      <p className="eyebrow mb-2.5">Coach / Conversational</p>
       <h2 className="section-title">Tell your coach</h2>
-      <p className="section-subtitle mt-2 max-w-[46ch]">
+      <p className="section-subtitle mt-1.5 max-w-[52ch]">
         How you&apos;re feeling, what you won&apos;t have access to, or ask it to
         move or swap a session. The plan adjusts itself.
       </p>
 
       {messages.length > 0 && (
-        <div className="mt-7 space-y-7 max-h-[26rem] overflow-y-auto pr-1">
+        <div className="mt-6 space-y-5 max-h-[26rem] overflow-y-auto">
           {messages.map((m) => (
             <div key={m.id}>
-              {/* The athlete: their own words, in the app's own voice. */}
+              {/* The athlete: their own words, in a ruled box. */}
               <div className="flex justify-end">
-                <p className="max-w-[85%] rounded-3xl rounded-br-lg bg-gray-50 px-4 py-2.5 text-[15px] leading-relaxed text-gray-800">
+                <p className="max-w-[85%] border border-gray-200 bg-gray-50 px-3 py-2 text-sm leading-relaxed text-gray-800">
                   {m.rawText}
                 </p>
               </div>
 
-              {/* The coach: serif, unboxed, given room. */}
-              <div className="mt-4 pl-1">
-                <p className="eyebrow mb-2">
-                  <span
-                    aria-hidden="true"
-                    className="h-1.5 w-1.5 rounded-full bg-indigo-500"
-                  />
+              {/* The coach: attributed, full measure, no box. */}
+              <div className="mt-3.5 border-l-2 border-indigo-500 pl-3.5">
+                <p className="eyebrow mb-1.5">
                   Coach
                   {m.reply && stamp(m.createdAt) && (
-                    <span className="opacity-55">{stamp(m.createdAt)}</span>
+                    <span className="text-gray-400">{stamp(m.createdAt)}</span>
                   )}
                 </p>
                 {m.reply ? (
-                  <p className="agent-voice max-w-[62ch] whitespace-pre-line">
-                    {m.reply}
-                  </p>
+                  <p className="agent-voice whitespace-pre-line">{m.reply}</p>
                 ) : (
                   <Thinking label="Working out what that means for your week" />
                 )}
@@ -155,15 +150,15 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
 
       {/* Guided next steps: never make the athlete start from a blank box. */}
       {messages.length === 0 && (
-        <div className="mt-6">
-          <p className="eyebrow mb-3">Try</p>
+        <div className="mt-5">
+          <p className="eyebrow mb-2.5">Try</p>
           <div className="flex flex-wrap gap-2">
             {EXAMPLES.map((e) => (
               <button
                 key={e}
                 onClick={() => send(e)}
                 disabled={busy}
-                className="pill"
+                className="tag"
               >
                 {e}
               </button>
@@ -172,11 +167,9 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
         </div>
       )}
 
-      {error && (
-        <div className="alert alert-danger mt-5">{error}</div>
-      )}
+      {error && <div className="alert alert-danger mt-4">{error}</div>}
 
-      <div className="mt-6 flex items-end gap-2.5">
+      <div className="mt-5 flex items-stretch gap-2">
         <textarea
           className="textarea flex-1 resize-none"
           rows={2}
@@ -196,7 +189,7 @@ export default function CoachChat({ onChanged }: { onChanged?: () => void }) {
           disabled={busy || !text.trim()}
           className="btn btn-primary"
         >
-          {busy ? "Thinking…" : "Send"}
+          {busy ? "…" : "Send"}
         </button>
       </div>
     </div>

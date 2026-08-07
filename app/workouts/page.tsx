@@ -12,7 +12,7 @@ export default function WorkoutsPage() {
     <div className="page-shell">
       <div className="page-inner-narrow">
         <header className="mb-8 sm:mb-10">
-          <p className="eyebrow mb-3">Settings · Integration</p>
+          <p className="eyebrow mb-3">Settings / Integration</p>
           <h1 className="page-title">Garmin workouts</h1>
         </header>
 

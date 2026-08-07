@@ -11,10 +11,10 @@ export function GarminConnect() {
   return (
     <div className="well">
       <p className="eyebrow mb-2.5">
-        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-gray-300" />
+        <span aria-hidden="true" className="h-1.5 w-1.5 bg-gray-400" />
         Not connected
       </p>
-      <p className="text-gray-700 text-[15px] leading-relaxed">
+      <p className="text-sm text-gray-700 leading-relaxed">
         Garmin access is pending approval of our developer application. Until
         Garmin grants access there is no way to link your account, so no Garmin
         data is being used anywhere in your plan.

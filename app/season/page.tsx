@@ -385,8 +385,8 @@ export default function PlanPage() {
       {/* Editing toolbar. Only appears once there is something to lose, and
           floats rather than clamping to the viewport edge. */}
       {dirty && (
-        <div className="sticky top-3 z-30 mb-6">
-          <div className="max-w-4xl mx-auto floating px-4 py-2 flex items-center gap-2">
+        <div className="sticky top-0 z-30 -mx-4 mb-6 bar sm:-mx-6">
+          <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center gap-2 sm:px-6">
             <span className="meta meta-strong">
               {netMoves(draft).length} unsaved
             </span>
@@ -437,7 +437,7 @@ export default function PlanPage() {
         <div className="max-w-4xl mx-auto">
           <div className="mb-8 sm:mb-10 flex items-end justify-between gap-4 flex-wrap">
             <div>
-              <p className="eyebrow mb-3">Plan · Full season</p>
+              <p className="eyebrow mb-3">Plan / Full season</p>
               <h1 className="page-title">Season plan</h1>
             </div>
             {user && <SyncStravaButton userId={user.id} onSynced={load} />}
@@ -520,11 +520,11 @@ export default function PlanPage() {
             library — it only has to be readable and dismissable. */}
         {openSession && (
           <div
-            className="fixed inset-0 bg-gray-900/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-gray-950/50 flex items-end sm:items-center justify-center p-4 z-50"
             onClick={() => setOpenSession(null)}
           >
             <div
-              className="card max-w-lg w-full p-6 sm:p-7 max-h-[85vh] overflow-y-auto shadow-2xl"
+              className="card max-w-lg w-full p-5 sm:p-6 max-h-[85vh] overflow-y-auto shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-start mb-4">

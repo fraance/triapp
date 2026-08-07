@@ -205,7 +205,7 @@ export default function AthletePage() {
     <div className="page-shell">
       <div className="page-inner">
         <header className="mb-8 sm:mb-10">
-          <p className="eyebrow mb-3">Me · Profile</p>
+          <p className="eyebrow mb-3">Me / Profile</p>
           <h1 className="page-title">Athlete profile</h1>
           <p className="page-subtitle">
             Everything here makes your plan more accurate. Leave anything blank
@@ -220,8 +220,8 @@ export default function AthletePage() {
         {/* A conflict is never resolved silently: the athlete's value stands
             until they say otherwise, and both origins are labelled. */}
         {suggestions.length > 0 && (
-          <div className="rounded-[2rem] bg-amber-50 p-6 sm:p-8 mb-6 shadow-sm">
-            <p className="eyebrow mb-3">Conflict · Needs your call</p>
+          <div className="card card-flag card-pad mb-6">
+            <p className="eyebrow mb-3">Conflict / Needs your call</p>
             <h2 className="section-title">We found different numbers to yours</h2>
             <p className="section-subtitle mt-2 mb-6">
               Your value stays unless you choose otherwise. We won&apos;t ask
@@ -231,7 +231,7 @@ export default function AthletePage() {
               {suggestions.map((sg: any) => (
                 <div
                   key={sg.field}
-                  className="bg-white rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4"
+                  className="bg-white  p-5 flex flex-wrap items-center justify-between gap-4"
                 >
                   <div className="min-w-0">
                     <p className="meta">{sg.label}</p>
@@ -310,9 +310,9 @@ export default function AthletePage() {
             <p className="meta">
               Profile completeness · {snapshot.readiness}%
             </p>
-            <div className="mt-2 mb-5 h-1 rounded-full bg-gray-100 overflow-hidden">
+            <div className="meter mt-2 mb-5">
               <span
-                className="block h-full rounded-full bg-indigo-500"
+                className=""
                 style={{ width: `${snapshot.readiness}%` }}
               />
             </div>

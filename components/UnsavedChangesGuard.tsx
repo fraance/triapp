@@ -115,8 +115,8 @@ export default function UnsavedChangesGuard({
   if (!pending) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
-      <div className="card w-full max-w-sm p-7 shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-gray-950/50 flex items-end sm:items-center justify-center p-4">
+      <div className="card w-full max-w-sm p-6 shadow-xl">
         <p className="eyebrow mb-3">Unsaved draft</p>
         <h2 className="section-title mb-2">Save your changes?</h2>
         <p className="section-subtitle mb-6">{message}</p>

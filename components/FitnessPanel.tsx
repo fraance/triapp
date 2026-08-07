@@ -156,9 +156,9 @@ export default function FitnessPanel() {
 
   return (
     <div>
-      <p className="eyebrow mb-3">Physiology · Derived</p>
+      <p className="eyebrow mb-2.5">Physiology / Derived</p>
       <h2 className="page-title">Fitness</h2>
-      <p className="page-subtitle mb-9">
+      <p className="page-subtitle mb-7">
         What the coach believes about your body, and how much it trusts each
         number.
       </p>
@@ -207,7 +207,7 @@ export default function FitnessPanel() {
             <div className="flex justify-between items-start gap-4">
               <div className="min-w-0">
                 <p className="meta">{t.label}</p>
-                <p className="numeral mt-1.5">{formatValue(t)}</p>
+                <p className="numeral mt-2">{formatValue(t)}</p>
               </div>
               <div className="text-right shrink-0">
                 <span className={`badge ${confidenceBadge(t.confidence)}`}>
@@ -220,12 +220,9 @@ export default function FitnessPanel() {
             </div>
 
             {/* Confidence meter: the trust level, made visible. */}
-            <div
-              className="mt-4 h-1 rounded-full bg-gray-100 overflow-hidden"
-              role="presentation"
-            >
+            <div className="meter mt-3.5" role="presentation">
               <span
-                className={`block h-full rounded-full ${confidenceBar(t.confidence)}`}
+                className={confidenceBar(t.confidence)}
                 style={{ width: `${Math.round(t.confidence * 100)}%` }}
               />
             </div>
@@ -278,7 +275,7 @@ export default function FitnessPanel() {
                     <td className="py-3 text-gray-900 font-semibold capitalize">
                       {e.discipline}
                       {limiters.ranked[0] === e.discipline && (
-                        <span className="badge badge-brand ml-2">
+                        <span className="badge badge-signal ml-2">
                           Biggest lever
                         </span>
                       )}
@@ -314,12 +311,10 @@ export default function FitnessPanel() {
       <h3 className="section-title mb-4">Fuelling</h3>
       <div className="card card-pad">
         <p className="meta">Estimated glycogen</p>
-        <p className="numeral mt-1.5">
+        <p className="numeral mt-2">
           {Math.round(metabolic.glycogen * 100)}%
-          <span className="ml-2 text-base font-normal text-gray-500">
-            {metabolic.band}
-          </span>
         </p>
+        <p className="meta mt-1.5">{metabolic.band}</p>
         <p className="hint">{metabolic.basis}</p>
         <p className="hint">
           An estimate from training load, not a measurement — we hold no
@@ -349,7 +344,7 @@ function ManualEntry({
   onSkip: () => void;
 }) {
   return (
-    <div className="well mt-4">
+    <div className="well mt-3.5">
       <p className="font-semibold text-gray-900 tracking-[-0.01em]">
         {protocol.name}
       </p>
@@ -361,8 +356,8 @@ function ManualEntry({
           <li key={i} className="flex gap-3 items-start">
             <span
               aria-hidden="true"
-              className="shrink-0 w-5 h-5 mt-0.5 rounded-full bg-white text-gray-500
-                font-mono text-[10px] font-semibold flex items-center justify-center"
+              className="shrink-0 w-4 h-4 mt-0.5 border border-gray-200 bg-white text-gray-500
+                font-mono text-[0.6rem] font-semibold flex items-center justify-center"
             >
               {i + 1}
             </span>

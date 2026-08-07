@@ -24,35 +24,37 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col justify-center px-6 sm:px-10 py-16">
-      <div className="mx-auto w-full max-w-3xl">
-        <span
-          aria-hidden="true"
-          className="inline-flex w-12 h-12 rounded-2xl bg-indigo-600 items-center justify-center text-white text-xl font-extrabold mb-10 shadow-lg shadow-indigo-600/25"
-          style={{ fontStretch: "120%" }}
-        >
-          T
-        </span>
+    <main className="min-h-screen flex flex-col">
+      <div className="border-b border-gray-200">
+        <div className="mx-auto w-full max-w-5xl px-6 h-14 flex items-center justify-between">
+          <span className="inline-flex items-baseline gap-1.5">
+            <span className="text-[15px] font-extrabold uppercase tracking-[-0.04em] text-gray-950">
+              TriApp
+            </span>
+            <span aria-hidden="true" className="w-1.5 h-1.5 bg-indigo-500" />
+          </span>
+          <p className="meta">Adaptive triathlon coaching</p>
+        </div>
+      </div>
 
-        <p className="eyebrow mb-5">TriApp · Adaptive triathlon coaching</p>
+      <div className="flex-1 mx-auto w-full max-w-5xl px-6 py-16 sm:py-24 flex flex-col justify-center">
+        <p className="eyebrow mb-6">System / 01</p>
 
-        {/* One focal point, set as loud as the type will go. */}
         <h1 className="display">
           Train on
           <br />
-          <span className="text-indigo-600">evidence</span>,
+          evidence,
           <br />
-          not guesswork.
+          not guesswork
         </h1>
 
-        {/* The pitch is the coach speaking, so it is set in the serif. */}
-        <p className="agent-voice mt-9 max-w-[46ch] text-gray-700">
-          I read your Strava history, your race, and how your week actually
-          went — then rebuild the plan around it. Every number I use, I show
-          you where it came from.
+        <p className="agent-voice mt-8 max-w-[52ch]">
+          TriApp reads your Strava history, your race, and how your week
+          actually went — then rebuilds the plan around it. Every number it
+          uses, it shows you where it came from.
         </p>
 
-        <div className="mt-11 flex flex-col sm:flex-row gap-3">
+        <div className="mt-10 flex flex-col sm:flex-row gap-2">
           <Link href="/signup" className="btn btn-primary btn-lg">
             Get started
           </Link>
@@ -61,10 +63,26 @@ export default function Home() {
           </Link>
         </div>
 
-        <div className="mt-16 flex flex-wrap gap-x-8 gap-y-3">
-          <p className="meta">Strava · Synced</p>
-          <p className="meta">Thresholds · Measured</p>
-          <p className="meta">Plan · Rebuilt daily</p>
+        {/* Dense, ruled, aligned — the product's own register, up front. */}
+        <div className="metric-grid metric-grid-3 mt-16">
+          <div>
+            <p className="meta">Strava</p>
+            <p className="numeral-sm font-mono mt-2 tracking-tight text-gray-950">
+              SYNCED
+            </p>
+          </div>
+          <div>
+            <p className="meta">Thresholds</p>
+            <p className="numeral-sm font-mono mt-2 tracking-tight text-gray-950">
+              MEASURED
+            </p>
+          </div>
+          <div>
+            <p className="meta">Plan</p>
+            <p className="numeral-sm font-mono mt-2 tracking-tight text-gray-950">
+              REBUILT DAILY
+            </p>
+          </div>
         </div>
       </div>
     </main>

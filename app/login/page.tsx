@@ -52,22 +52,19 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-5 py-12">
       <div className="w-full max-w-md">
-        <div className="mb-9">
-          <Link href="/" aria-label="TriApp home">
-            <span
-              aria-hidden="true"
-              className="inline-flex w-11 h-11 rounded-2xl bg-indigo-600 items-center justify-center text-white text-lg font-extrabold mb-7 shadow-lg shadow-indigo-600/25"
-              style={{ fontStretch: "120%" }}
-            >
-              T
+        <div className="mb-8">
+          <Link href="/" aria-label="TriApp home" className="inline-flex items-baseline gap-1.5 mb-10">
+            <span className="text-[15px] font-extrabold uppercase tracking-[-0.04em] text-gray-950">
+              TriApp
             </span>
+            <span aria-hidden="true" className="w-1.5 h-1.5 bg-indigo-500" />
           </Link>
-          <p className="eyebrow mb-4">Session · Sign in</p>
+          <p className="eyebrow mb-3">Session / Sign in</p>
           <h1 className="page-title">Welcome back</h1>
           <p className="page-subtitle">Log in to your training plan.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card card-pad space-y-5">
+        <form onSubmit={handleSubmit} className="card card-pad space-y-4">
           <div>
             <label className="label" htmlFor="login-email">
               Email
@@ -107,11 +104,11 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-gray-600">
+        <p className="mt-5 text-sm text-gray-600">
           Don&apos;t have an account?{" "}
           <Link
             href="/signup"
-            className="text-indigo-700 font-semibold underline underline-offset-4"
+            className="text-gray-950 font-semibold underline underline-offset-2"
           >
             Sign up
           </Link>

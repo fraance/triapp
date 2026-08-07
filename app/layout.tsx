@@ -1,33 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, JetBrains_Mono, Newsreader } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import Nav from "@/components/Nav";
 import AuthGuard from "@/components/AuthGuard";
 
 /**
- * Three typefaces, three jobs. See the header comment in globals.css.
+ * Two typefaces. See the header comment in globals.css.
  *
- * Archivo carries the `wdth` axis, which is the whole point of choosing it:
- * display headings run at ~115-118% width for the heavy, extended, editorial
- * look, while the same file serves normal-width UI text. One download, two
- * registers.
+ * Inter carries the `opsz` axis, so display settings optically tighten on
+ * their own rather than needing a second cut. There is deliberately no serif
+ * in this product — a different speaker is signalled with weight and measure.
  */
-const archivo = Archivo({
-  subsets: ["latin"],
-  axes: ["wdth"],
-  display: "swap",
-  variable: "--font-archivo",
-});
-
-/** The coach's speaking voice, and only that. */
-const newsreader = Newsreader({
+const inter = Inter({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-newsreader",
+  variable: "--font-inter",
 });
 
-/** Measurements: TSS, durations, dates, confidence, source counts. */
+/** Every number, label, timestamp and status word. */
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   display: "swap",
@@ -64,7 +55,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#f3f0ea",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -73,17 +64,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`${archivo.variable} ${newsreader.variable} ${jetbrainsMono.variable}`}
-    >
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body>
         <AuthProvider>
           <Nav />
-          {/* Bottom padding clears the floating mobile tab bar. */}
-          <div className="pb-28 sm:pb-0">
-            <AuthGuard>{children}</AuthGuard>
-          </div>
+          {/* `.page-shell` already reserves the fixed tab bar plus the home
+              indicator, so views that use it need nothing here. This covers
+              anything that doesn't. */}
+          <AuthGuard>{children}</AuthGuard>
         </AuthProvider>
       </body>
     </html>

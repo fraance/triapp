@@ -101,7 +101,7 @@ export default function DocumentsPage() {
     <div className="page-shell">
       <div className="page-inner-narrow">
         <header className="mb-8 sm:mb-10">
-          <p className="eyebrow mb-3">Settings · Documents</p>
+          <p className="eyebrow mb-3">Settings / Documents</p>
           <h1 className="page-title">
             Context for your coach
           </h1>

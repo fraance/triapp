@@ -6,7 +6,7 @@ import CoachChat from "@/components/CoachChat";
 import CoachDecisions from "@/components/CoachDecisions";
 import SessionPhases from "@/components/SessionPhases";
 import SyncStravaButton from "@/components/SyncStravaButton";
-import { EmptyState, Loading, PageHeader, Stat } from "@/components/ui";
+import { EmptyState, Loading, MetricGrid, PageHeader, Stat } from "@/components/ui";
 import Link from "next/link";
 
 interface DaySession {
@@ -153,8 +153,8 @@ export default function TodayPage() {
 
         {/* Week context */}
         {view && view.hasPlan && view.inPlanRange && (
-          <div className="card card-pad mb-6">
-            <div className="grid grid-cols-3 gap-5">
+          <div className="mb-6">
+            <MetricGrid cols={3}>
               <Stat
                 label="Week"
                 value={view.week != null ? view.week : "—"}
@@ -169,16 +169,17 @@ export default function TodayPage() {
                   label="Race in"
                   value={view.daysUntilRace}
                   hint="days"
+                  signal
                 />
               ) : (
                 <Stat label="Race date" value={view.raceDate ?? "—"} text />
               )}
-            </div>
+            </MetricGrid>
             {view.summary && (
-              <>
-                <hr className="divider my-6" />
-                <p className="agent-voice-sm max-w-[62ch]">{view.summary}</p>
-              </>
+              <div className="card card-pad mt-3">
+                <p className="eyebrow mb-2.5">Coach</p>
+                <p className="agent-voice-sm">{view.summary}</p>
+              </div>
             )}
           </div>
         )}
@@ -195,27 +196,27 @@ export default function TodayPage() {
 
         {/* Today's sessions */}
         {view && view.hasPlan && (
-          <section className="mb-10">
-            <h2 className="section-title mb-4">Today&apos;s session</h2>
+          <section className="mb-8">
+            <h2 className="section-title mb-3">Today&apos;s session</h2>
 
             {view.sessions.length === 0 ? (
               <div className="card card-pad">
-                <p className="text-gray-900 font-semibold">Rest day</p>
-                <p className="text-gray-600 mt-1">
+                <p className="meta meta-strong">Rest day</p>
+                <p className="text-sm text-gray-600 mt-2">
                   Nothing scheduled for today. Recover well.
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {view.sessions.map((s) => {
                   const expanded = expandedId === s.id;
                   return (
-                    <article key={s.id} className="card card-pad">
+                    <article key={s.id} className="card">
                       <button
                         type="button"
                         onClick={() => setExpandedId(expanded ? null : s.id)}
                         aria-expanded={expanded}
-                        className="w-full flex items-center justify-between gap-4 text-left"
+                        className="w-full flex items-center justify-between gap-4 text-left p-4 sm:px-5"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <span
@@ -223,24 +224,26 @@ export default function TodayPage() {
                           >
                             {s.discipline}
                           </span>
-                          <span className="text-gray-900 font-semibold tracking-[-0.01em] truncate">
+                          <span className="text-sm font-semibold tracking-[-0.015em] text-gray-950 truncate">
                             {s.type}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <span className="meta meta-strong">{s.duration}</span>
-                          <span className="text-xs text-gray-400">
-                            {expanded ? "▾" : "▸"}
+                          <span
+                            aria-hidden="true"
+                            className="text-[0.6rem] text-gray-400"
+                          >
+                            {expanded ? "—" : "+"}
                           </span>
                         </div>
                       </button>
 
                       {expanded && (
-                        <div className="mt-5">
-                          <hr className="divider mb-5" />
-                          <div className="flex justify-between items-center mb-4">
+                        <div className="border-t border-gray-200 p-4 sm:p-5">
+                          <div className="flex justify-between items-center gap-3 mb-4">
                             <p className="meta meta-strong">
-                              {s.duration} ·{" "}
+                              {s.duration} /{" "}
                               {s.actualTss !== null ? s.actualTss : s.tss} TSS
                             </p>
                             {s.status !== "planned" && (
@@ -256,16 +259,16 @@ export default function TodayPage() {
                             </div>
                           )}
                           {s.pace && (
-                            <p className="text-gray-700 mb-5 text-[15px]">
-                              <span className="meta meta-strong">Pace / effort</span>{" "}
-                              <span className="ml-1">{s.pace}</span>
-                            </p>
+                            <div className="mb-5">
+                              <p className="eyebrow mb-1.5">Pace / effort</p>
+                              <p className="text-sm text-gray-700">{s.pace}</p>
+                            </div>
                           )}
 
                           {/* Two choices only: you did it, or you're not doing it.
                               "Skip" and "Undo" side by side read as the same thing. */}
                           {s.status === "planned" ? (
-                            <div className="flex gap-2.5">
+                            <div className="flex gap-2">
                               <button
                                 onClick={() => setStatus(s.id, "completed")}
                                 disabled={busyId === s.id}
@@ -282,12 +285,12 @@ export default function TodayPage() {
                               </button>
                             </div>
                           ) : (
-                            <p className="text-gray-600">
-                              {s.status === "completed" ? "Done." : "Discarded."}{" "}
+                            <p className="meta">
+                              {s.status === "completed" ? "Done" : "Discarded"}{" "}
                               <button
                                 onClick={() => setStatus(s.id, "planned")}
                                 disabled={busyId === s.id}
-                                className="text-indigo-700 font-medium underline underline-offset-4 disabled:opacity-50"
+                                className="text-indigo-600 underline underline-offset-2 disabled:opacity-50"
                               >
                                 change
                               </button>
@@ -307,30 +310,30 @@ export default function TodayPage() {
         <CoachDecisions onChanged={load} />
 
         {/* Tell the coach what is going on, in your own words. */}
-        <div className="mb-10">
+        <div className="mb-8">
           <CoachChat onChanged={load} />
         </div>
 
         {/* Tomorrow preview */}
         {view && view.hasPlan && (
-          <section className="mb-8">
-            <h2 className="section-title mb-4">Tomorrow</h2>
+          <section>
+            <h2 className="section-title mb-3">Tomorrow</h2>
             {view.tomorrow.length === 0 ? (
               <div className="card card-pad">
-                <p className="text-gray-600">Rest day</p>
+                <p className="meta">Rest day</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {view.tomorrow.map((s) => (
                   <div
                     key={s.id}
                     className="card card-pad flex justify-between items-center gap-4"
                   >
                     <div className="min-w-0">
-                      <p className="font-semibold text-gray-900 tracking-[-0.01em] truncate">
-                        {s.discipline} · {s.type}
+                      <p className="text-sm font-semibold tracking-[-0.015em] text-gray-950 truncate">
+                        {s.discipline} / {s.type}
                       </p>
-                      <p className="meta mt-1">{s.duration}</p>
+                      <p className="meta mt-1.5">{s.duration}</p>
                     </div>
                     <p className="meta meta-strong shrink-0">TSS {s.tss}</p>
                   </div>
